@@ -168,15 +168,16 @@ func TerminalSummary(bundles []Bundle, maxList int) string {
 	}
 
 	var sb strings.Builder
-	fmt.Fprintf(&sb, "\n%d repositories, %s files, %s characters, roughly %s tokens\n",
-		len(bundles), commas(int64(files)), commas(int64(chars)), commas(int64(chars/4)))
+	fmt.Fprintln(&sb, Bold(fmt.Sprintf(
+		"\n%d repositories, %s files, %s characters, roughly %s tokens",
+		len(bundles), commas(int64(files)), commas(int64(chars)), commas(int64(chars/4)))))
 
 	if types := TypeTotals(bundles); len(types) > 0 && chars > 0 {
 		shown := types
 		if maxList > 0 && len(shown) > maxList {
 			shown = shown[:maxList]
 		}
-		sb.WriteString("\nWhat it is made of:\n")
+		sb.WriteString("\n" + Bold("What it is made of:") + "\n")
 		for _, t := range shown {
 			fmt.Fprintf(&sb, "  %4d %-8s %10s  %4.1f%%\n",
 				t.Files, t.Ext, humanBytes(int64(t.Chars)),
@@ -200,7 +201,7 @@ func TerminalSummary(bundles []Bundle, maxList int) string {
 		if maxList > 0 && len(shown) > maxList {
 			shown = shown[:maxList]
 		}
-		sb.WriteString("\nWhere the context goes:\n")
+		sb.WriteString("\n" + Bold("Where the context goes:") + "\n")
 		for _, b := range shown {
 			fmt.Fprintf(&sb, "  %10s  %4.1f%%  %-40s %3d files\n",
 				humanBytes(int64(b.Chars())), 100*float64(b.Chars())/float64(chars),
@@ -222,7 +223,7 @@ func TerminalSummary(bundles []Bundle, maxList int) string {
 		total += s.Count
 		bytes += s.Bytes
 	}
-	fmt.Fprintf(&sb, "\nNot included: %d files, %s\n", total, humanBytes(bytes))
+	fmt.Fprintln(&sb, Bold(fmt.Sprintf("\nNot included: %d files, %s", total, humanBytes(bytes))))
 
 	width := 0
 	for _, s := range stats {
@@ -250,7 +251,7 @@ func TerminalSummary(bundles []Bundle, maxList int) string {
 	if maxList > 0 && len(shown) > maxList {
 		shown = shown[:maxList]
 	}
-	sb.WriteString("\nDownload these from GitHub if you need them:\n")
+	sb.WriteString("\n" + Bold("Download these from GitHub if you need them:") + "\n")
 	for _, e := range shown {
 		fmt.Fprintf(&sb, "  %10s  %s/%s\n", humanBytes(e.Size), e.Repo.Name, e.Path)
 	}

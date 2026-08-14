@@ -36,7 +36,8 @@ type options struct {
 	dryRun          bool
 	merge           bool
 	ignoreBudget    bool
-	pick            bool
+	all             bool
+	dropped         map[string]map[string][]string
 	plain           bool
 	includeLicenses bool
 	includeGen      bool
@@ -66,8 +67,8 @@ func Run(args []string, out io.Writer) error {
 	fs.BoolVar(&opt.dryRun, "dry-run", false, "report cost and size, then write nothing")
 	fs.BoolVar(&opt.merge, "merge", false,
 		"with several accounts, write one combined file instead of one per account")
-	fs.BoolVar(&opt.pick, "pick", false,
-		"list the repositories and ask which ones to collect")
+	fs.BoolVar(&opt.all, "all", false,
+		"collect everything without asking, which is the default when there is no terminal")
 	fs.BoolVar(&opt.noFileTypes, "no-file-types", false,
 		"skip the per-repository file-type counts, which cost one request each")
 	fs.BoolVar(&opt.includeGen, "include-generated", false,
@@ -77,7 +78,7 @@ func Run(args []string, out io.Writer) error {
 	fs.BoolVar(&opt.skipOffice, "skip-office", false,
 		"link spreadsheets and documents instead of extracting their text")
 	fs.BoolVar(&opt.plain, "plain", false,
-		"with -pick, type a selection instead of using arrow keys")
+		"type a selection instead of using arrow keys")
 	fs.BoolVar(&opt.ignoreBudget, "ignore-budget", false,
 		"start even when the quota looks too small, and stop when it runs out")
 	fs.StringVar(&opt.apiURL, "api", defaultAPI, "API base URL, for testing")
@@ -144,7 +145,9 @@ func Run(args []string, out io.Writer) error {
 		repos = append(repos, batch...)
 	}
 
-	keep := selectRepos(repos, opt, out)
+	keep, dropped := selectRepos(repos, opt, out)
+	opt.dropped = dropped
+	reportEmptyAccounts(opt.users, keep, dropped, out)
 	if len(keep) == 0 {
 		return errors.New("no repositories to collect")
 	}
@@ -155,20 +158,20 @@ func Run(args []string, out io.Writer) error {
 		fillFileTypes(client, keep, opt, out)
 	}
 
-	if opt.pick {
-		if !interactive() {
-			return errors.New("-pick needs a terminal; use -exclude when scripting")
-		}
-		in := io.Reader(os.Stdin)
-		if opt.plain {
-			in = struct{ io.Reader }{os.Stdin} // hides os.Stdin, so Pick types
-		}
-		keep, err = Pick(keep, in, out)
-		if err != nil {
-			return err
-		}
-		if len(keep) == 0 {
-			return errors.New("no repositories selected")
+	// Asking is the default, because collecting an account you have not looked
+	// at is how a 30 MB repository ends up in a bundle. A pipeline has no
+	// terminal to ask through, so it takes everything and says so.
+	if !opt.all {
+		if !stdinIsTerminal() {
+			fmt.Fprintln(out, "no terminal to ask through, collecting everything")
+		} else {
+			keep, err = pickPerAccount(keep, opt, out)
+			if err != nil {
+				return err
+			}
+			if len(keep) == 0 {
+				return errors.New("nothing selected")
+			}
 		}
 	}
 
@@ -233,7 +236,7 @@ func Run(args []string, out io.Writer) error {
 // people's work read together is rarely one document; -merge asks for the
 // combined file instead.
 func write(bundles []Bundle, opt options, out io.Writer) error {
-	groups := groupByOwner(bundles, opt.users)
+	groups := groupBundlesByOwner(bundles, opt.users)
 	if opt.merge || len(groups) == 1 {
 		return writeOne(opt.users, bundles, outPath(opt, opt.users), out)
 	}
@@ -246,34 +249,72 @@ func write(bundles []Bundle, opt options, out io.Writer) error {
 	return nil
 }
 
-type ownerGroup struct {
+type bundleGroup struct {
 	owner   string
 	bundles []Bundle
 }
 
-// groupByOwner keeps the accounts in the order they were named on the command
-// line, which is the order the person asking has in mind.
-func groupByOwner(bundles []Bundle, users []string) []ownerGroup {
+type repoGroup struct {
+	owner string
+	repos []Repo
+}
+
+// groupBundlesByOwner and groupByOwner both keep the accounts in the order they
+// were named on the command line, which is the order the person asking has in
+// mind.
+func groupBundlesByOwner(bundles []Bundle, users []string) []bundleGroup {
 	byOwner := map[string][]Bundle{}
+	var order []string
 	for _, b := range bundles {
-		byOwner[ownerOf(b.Repo)] = append(byOwner[ownerOf(b.Repo)], b)
+		owner := ownerOf(b.Repo)
+		if _, seen := byOwner[owner]; !seen {
+			order = append(order, owner)
+		}
+		byOwner[owner] = append(byOwner[owner], b)
 	}
 
-	var out []ownerGroup
-	seen := map[string]bool{}
+	var out []bundleGroup
+	for _, owner := range orderOwners(order, users) {
+		out = append(out, bundleGroup{owner, byOwner[owner]})
+	}
+	return out
+}
+
+func groupByOwner(repos []Repo, users []string) []repoGroup {
+	byOwner := map[string][]Repo{}
+	var order []string
+	for _, r := range repos {
+		owner := ownerOf(r)
+		if _, seen := byOwner[owner]; !seen {
+			order = append(order, owner)
+		}
+		byOwner[owner] = append(byOwner[owner], r)
+	}
+
+	var out []repoGroup
+	for _, owner := range orderOwners(order, users) {
+		out = append(out, repoGroup{owner, byOwner[owner]})
+	}
+	return out
+}
+
+// orderOwners puts the owners in the order the accounts were named, then any
+// the loop missed, in case an account was renamed under us.
+func orderOwners(present, users []string) []string {
+	var out []string
+	used := map[string]bool{}
 	for _, u := range users {
-		for owner, group := range byOwner {
-			if strings.EqualFold(owner, u) && !seen[owner] {
-				out = append(out, ownerGroup{owner, group})
-				seen[owner] = true
+		for _, owner := range present {
+			if strings.EqualFold(owner, u) && !used[owner] {
+				out = append(out, owner)
+				used[owner] = true
 			}
 		}
 	}
-	// Anything the loop missed, in case an account was renamed under us.
-	for owner, group := range byOwner {
-		if !seen[owner] {
-			out = append(out, ownerGroup{owner, group})
-			seen[owner] = true
+	for _, owner := range present {
+		if !used[owner] {
+			out = append(out, owner)
+			used[owner] = true
 		}
 	}
 	return out
@@ -312,8 +353,8 @@ func writeOne(users []string, bundles []Bundle, path string, out io.Writer) erro
 	if err := os.WriteFile(path, []byte(doc), 0o644); err != nil {
 		return fmt.Errorf("writing %s: %w", path, err)
 	}
-	fmt.Fprintf(out, "\nwrote %s (%s bytes, %d repositories)\n",
-		path, commas(int64(len(doc))), len(bundles))
+	fmt.Fprintln(out, Good(fmt.Sprintf("\nwrote %s (%s bytes, %d repositories)",
+		path, commas(int64(len(doc))), len(bundles))))
 	return nil
 }
 
@@ -350,10 +391,11 @@ Usage:
 
 Examples:
   repo-omnibus hihipy
-        Collect everything, write ~/Downloads/hihipy-omnibus.md
+        Choose which repositories to collect, with arrow keys, then write
+        ~/Downloads/hihipy-omnibus.md
 
-  repo-omnibus -pick hihipy
-        Choose which repositories to collect, with arrow keys
+  repo-omnibus -all hihipy
+        Take everything without asking
 
   repo-omnibus -dry-run torvalds
         Report what it would cost and how big it would be, write nothing
@@ -365,7 +407,7 @@ Examples:
         Leave named repositories out
 
   repo-omnibus hihipy charmbracelet
-        Collect two accounts, writing one file each
+        Two accounts, asked about one at a time, written to one file each
 
   repo-omnibus -merge hihipy charmbracelet
         The same two accounts in one combined file, with the owner on every
@@ -470,10 +512,125 @@ func fillFileTypes(client *Client, keep []Repo, opt options, out io.Writer) {
 	}
 }
 
+// pickPerAccount asks about one account at a time. A single list mixing three
+// people's repositories hides who owns what, and the names alone do not say.
+func pickPerAccount(keep []Repo, opt options, out io.Writer) ([]Repo, error) {
+	groups := groupByOwner(keep, opt.users)
+
+	in := io.Reader(os.Stdin)
+	if opt.plain {
+		in = struct{ io.Reader }{os.Stdin} // hides os.Stdin, so Pick types
+	}
+
+	var chosen []Repo
+	for _, g := range groups {
+		if len(groups) > 1 {
+			fmt.Fprintln(out, Bold(fmt.Sprintf("\n%s: %d repositories", g.owner, len(g.repos))))
+		}
+		// A short list can be short because the account is small or because
+		// most of it was filtered. Those look identical without this line.
+		if lines := filteredLines(opt.dropped[g.owner], opt.verbose); len(lines) > 0 {
+			fmt.Fprintln(out, Notice("  not shown:"))
+			for _, l := range lines {
+				fmt.Fprintln(out, Notice("    "+l))
+			}
+		}
+		picked, err := Pick(g.repos, in, out)
+		if err != nil {
+			return nil, err
+		}
+		if picked == nil {
+			fmt.Fprintf(out, "%s: skipped\n", g.owner)
+			continue
+		}
+		chosen = append(chosen, picked...)
+	}
+	return chosen, nil
+}
+
+// filteredLines describes what an account lost, naming the repositories rather
+// than only counting them, since "1 too large" does not say which one. Long
+// lists are cut, unless -verbose asks for all of them.
+func filteredLines(reasons map[string][]string, verbose bool) []string {
+	if len(reasons) == 0 {
+		return nil
+	}
+
+	type kind struct{ key, phrase, flag string }
+	kinds := []kind{
+		{"fork", "forks", "-include-forks"},
+		{"archived", "archived", "-include-archived"},
+		{"empty", "empty", ""},
+		{"excluded by name", "excluded by name", ""},
+	}
+	for reason := range reasons {
+		if strings.HasPrefix(reason, "over ") {
+			kinds = append(kinds, kind{reason, "too large", "-max-repo-kb"})
+		}
+	}
+
+	var lines []string
+	for _, k := range kinds {
+		names := reasons[k.key]
+		if len(names) == 0 {
+			continue
+		}
+		shown := names
+		suffix := ""
+		if !verbose && len(shown) > 4 {
+			shown = shown[:3]
+			suffix = fmt.Sprintf(" and %d more", len(names)-3)
+		}
+		line := fmt.Sprintf("%d %s: %s%s", len(names), k.phrase, strings.Join(shown, ", "), suffix)
+		if k.flag != "" {
+			line += "  (" + k.flag + ")"
+		}
+		lines = append(lines, line)
+	}
+	return lines
+}
+
+// reportEmptyAccounts names any account that had repositories but lost all of
+// them to the filters. Without this an account you asked for simply produces no
+// file, and nothing says why.
+func reportEmptyAccounts(users []string, keep []Repo, dropped map[string]map[string][]string, out io.Writer) {
+	kept := map[string]bool{}
+	for _, r := range keep {
+		kept[strings.ToLower(ownerOf(r))] = true
+	}
+
+	for _, u := range users {
+		if kept[strings.ToLower(u)] {
+			continue
+		}
+
+		// Say what happened to this account specifically, rather than listing
+		// every flag and leaving the reader to work out which one applies.
+		var reasons map[string][]string
+		for owner, counts := range dropped {
+			if strings.EqualFold(owner, u) {
+				reasons = counts
+			}
+		}
+		if len(reasons) == 0 {
+			fmt.Fprintln(out, Notice(fmt.Sprintf(
+				"%s: no public repositories, so no file was written", u)))
+			continue
+		}
+
+		fmt.Fprintln(out, Notice(fmt.Sprintf(
+			"%s: nothing to collect, so no file was written", u)))
+		fmt.Fprintln(out, Notice("  every repository was filtered out:"))
+		for _, l := range filteredLines(reasons, true) {
+			fmt.Fprintln(out, Notice("    "+l))
+		}
+	}
+}
+
 // selectRepos applies the exclusions and reports what it dropped. An account
 // with hundreds of forks would bury the useful output under one line each, so
 // reasons are counted and only small groups are named.
-func selectRepos(repos []Repo, opt options, out io.Writer) []Repo {
+func selectRepos(repos []Repo, opt options, out io.Writer) ([]Repo, map[string]map[string][]string) {
 	excluded := make(map[string]bool, len(opt.exclude))
 	for _, name := range opt.exclude {
 		excluded[name] = true
@@ -481,27 +638,42 @@ func selectRepos(repos []Repo, opt options, out io.Writer) []Repo {
 
 	var keep []Repo
 	dropped := map[string][]string{}
+	byOwner := map[string]map[string][]string{}
 	var order []string
-	drop := func(reason, name string) {
+	drop := func(reason, name, owner, bare string) {
 		if _, seen := dropped[reason]; !seen {
 			order = append(order, reason)
 		}
 		dropped[reason] = append(dropped[reason], name)
+		if byOwner[owner] == nil {
+			byOwner[owner] = map[string][]string{}
+		}
+		// Inside an account's own block the owner is already known, so the
+		// bare name reads better than the qualified one.
+		byOwner[owner][reason] = append(byOwner[owner][reason], bare)
 	}
 
 	for _, r := range repos {
+		owner := ownerOf(r)
+		// With several accounts in one run, a bare repository name does not
+		// say whose it is, and the reader guesses wrong.
+		label := r.Name
+		if len(opt.users) > 1 {
+			label = r.FullName
+		}
 		switch {
 		case excluded[r.Name]:
-			drop("excluded by name", r.Name)
+			drop("excluded by name", label, owner, r.Name)
 		case r.Fork && !opt.includeForks:
-			drop("fork", r.Name)
+			drop("fork", label, owner, r.Name)
 		case r.Archived && !opt.includeArchived:
-			drop("archived", r.Name)
+			drop("archived", label, owner, r.Name)
 		case r.Size == 0:
-			drop("empty", r.Name)
+			drop("empty", label, owner, r.Name)
 		case opt.maxRepoKB > 0 && r.Size > opt.maxRepoKB:
 			drop(fmt.Sprintf("over %s (raise with -max-repo-kb)",
 				humanBytes(int64(opt.maxRepoKB)*1024)),
+				fmt.Sprintf("%s (%s)", label, humanBytes(int64(r.Size)*1024)), owner,
 				fmt.Sprintf("%s (%s)", r.Name, humanBytes(int64(r.Size)*1024)))
 		default:
 			keep = append(keep, r)
@@ -510,14 +682,14 @@ func selectRepos(repos []Repo, opt options, out io.Writer) []Repo {
 
 	for _, reason := range order {
 		names := dropped[reason]
-		if opt.verbose || len(names) <= 4 {
-			fmt.Fprintf(out, "skipped %d %s: %s\n", len(names), reason, strings.Join(names, ", "))
-			continue
+		line := fmt.Sprintf("skipped %d %s: %s", len(names), reason, strings.Join(names, ", "))
+		if !opt.verbose && len(names) > 4 {
+			line = fmt.Sprintf("skipped %d %s: %s and %d more",
+				len(names), reason, strings.Join(names[:3], ", "), len(names)-3)
 		}
-		fmt.Fprintf(out, "skipped %d %s: %s and %d more\n",
-			len(names), reason, strings.Join(names[:3], ", "), len(names)-3)
+		fmt.Fprintln(out, Quiet(line))
 	}
-	return keep
+	return keep, byOwner
 }
 
 // collect downloads each repository, stopping cleanly when the quota runs out

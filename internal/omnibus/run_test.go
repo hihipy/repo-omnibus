@@ -77,7 +77,7 @@ func TestRunWritesBundle(t *testing.T) {
 	srv := fakeGitHub(t, testRepos(3), &remaining)
 	out := filepath.Join(t.TempDir(), "bundle.md")
 
-	err := Run([]string{"-api", srv.URL, "-out", out, "hihipy"}, os.Stdout)
+	err := Run([]string{"-all", "-api", srv.URL, "-out", out, "hihipy"}, os.Stdout)
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -97,7 +97,7 @@ func TestRunRefusesWhenQuotaTooSmall(t *testing.T) {
 	srv := fakeGitHub(t, testRepos(6), &remaining)
 	out := filepath.Join(t.TempDir(), "bundle.md")
 
-	err := Run([]string{"-api", srv.URL, "-out", out, "hihipy"}, os.Stdout)
+	err := Run([]string{"-all", "-api", srv.URL, "-out", out, "hihipy"}, os.Stdout)
 	if err == nil {
 		t.Fatal("expected a refusal, got nil")
 	}
@@ -114,7 +114,7 @@ func TestRunIgnoreBudgetCollectsWhatFits(t *testing.T) {
 	srv := fakeGitHub(t, testRepos(6), &remaining)
 	out := filepath.Join(t.TempDir(), "bundle.md")
 
-	err := Run([]string{"-api", srv.URL, "-out", out, "-ignore-budget", "hihipy"}, os.Stdout)
+	err := Run([]string{"-all", "-api", srv.URL, "-out", out, "-ignore-budget", "hihipy"}, os.Stdout)
 	if err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -139,7 +139,7 @@ func TestSelectReportsEveryExclusion(t *testing.T) {
 		{Name: "byname", Size: 10},
 	}
 	opt := options{exclude: repeatable{"byname"}}
-	keep := selectRepos(repos, opt, os.Stdout)
+	keep, _ := selectRepos(repos, opt, os.Stdout)
 	if len(keep) != 1 || keep[0].Name != "keep" {
 		t.Errorf("kept %v, want just keep", keep)
 	}
@@ -154,7 +154,7 @@ func TestSelectSkipsOversizedRepos(t *testing.T) {
 		{Name: "scrape-faa-releasable-aircraft", Size: 11_946_256},
 	}
 	var out strings.Builder
-	keep := selectRepos(repos, options{maxRepoKB: 50 * 1024}, &out)
+	keep, _ := selectRepos(repos, options{maxRepoKB: 50 * 1024}, &out)
 
 	if len(keep) != 1 || keep[0].Name != "normal" {
 		t.Fatalf("kept %v, want just the normal repository", keep)
@@ -169,7 +169,7 @@ func TestSelectSkipsOversizedRepos(t *testing.T) {
 
 func TestSelectAllowsAnySizeWhenCapIsZero(t *testing.T) {
 	repos := []Repo{{Name: "huge", Size: 16_492_672}}
-	keep := selectRepos(repos, options{maxRepoKB: 0}, &strings.Builder{})
+	keep, _ := selectRepos(repos, options{maxRepoKB: 0}, &strings.Builder{})
 	if len(keep) != 1 {
 		t.Error("a cap of zero should mean no limit")
 	}
@@ -184,7 +184,7 @@ func TestSelectCountsRatherThanListingManySkips(t *testing.T) {
 	repos = append(repos, Repo{Name: "real", Size: 10})
 
 	var out strings.Builder
-	keep := selectRepos(repos, options{}, &out)
+	keep, _ := selectRepos(repos, options{}, &out)
 	if len(keep) != 1 {
 		t.Fatalf("kept %d, want 1", len(keep))
 	}
@@ -224,7 +224,7 @@ func TestDryRunReservesNothingForTarballs(t *testing.T) {
 	srv := fakeGitHubWithTrees(t, repos, &remaining)
 
 	var out strings.Builder
-	if err := Run([]string{"-api", srv.URL, "-dry-run", "hihipy"}, &out); err != nil {
+	if err := Run([]string{"-all", "-api", srv.URL, "-dry-run", "hihipy"}, &out); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 	if strings.Contains(out.String(), "fall back to the primary language") {
@@ -278,7 +278,7 @@ func TestTokenIsSentAndPrivateReposAreDropped(t *testing.T) {
 
 	var out strings.Builder
 	outPath := filepath.Join(t.TempDir(), "b.md")
-	if err := Run([]string{"-api", srv.URL, "-out", outPath, "u"}, &out); err != nil {
+	if err := Run([]string{"-all", "-api", srv.URL, "-out", outPath, "u"}, &out); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 
@@ -315,7 +315,7 @@ func TestUnknownUserSaysSo(t *testing.T) {
 	srv := httptest.NewServer(mux)
 	defer srv.Close()
 
-	err := Run([]string{"-api", srv.URL, "-dry-run", "thisaccountdoesnotexist12345"}, &strings.Builder{})
+	err := Run([]string{"-all", "-api", srv.URL, "-dry-run", "thisaccountdoesnotexist12345"}, &strings.Builder{})
 	if err == nil {
 		t.Fatal("expected an error")
 	}
@@ -337,7 +337,7 @@ func TestHelpReadsAsAManual(t *testing.T) {
 	usage(fs)
 
 	for _, want := range []string{
-		"Usage:", "Examples:", "repo-omnibus -pick hihipy",
+		"Usage:", "Examples:", "repo-omnibus -all hihipy",
 		"GITHUB_TOKEN", "Only public repositories are ever read",
 		"What is left out of the bundle", "Flags:", "Files:",
 	} {
@@ -395,7 +395,7 @@ func TestOutFlagStillWins(t *testing.T) {
 	srv := fakeGitHubWithTrees(t, testRepos(1), &remaining)
 	out := filepath.Join(t.TempDir(), "somewhere-else.md")
 
-	if err := Run([]string{"-api", srv.URL, "-out", out, "hihipy"}, &strings.Builder{}); err != nil {
+	if err := Run([]string{"-all", "-api", srv.URL, "-out", out, "hihipy"}, &strings.Builder{}); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 	if _, err := os.Stat(out); err != nil {
@@ -467,7 +467,7 @@ func TestSeveralAccountsWriteOneFileEach(t *testing.T) {
 	srv := twoAccountServer(t)
 	dir := t.TempDir()
 
-	if err := Run([]string{"-api", srv.URL, "-out", dir, "alice", "bob"}, &strings.Builder{}); err != nil {
+	if err := Run([]string{"-all", "-api", srv.URL, "-out", dir, "alice", "bob"}, &strings.Builder{}); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 
@@ -494,7 +494,7 @@ func TestMergeWritesOneFile(t *testing.T) {
 	srv := twoAccountServer(t)
 	out := filepath.Join(t.TempDir(), "both.md")
 
-	if err := Run([]string{"-api", srv.URL, "-merge", "-out", out, "alice", "bob"},
+	if err := Run([]string{"-all", "-api", srv.URL, "-merge", "-out", out, "alice", "bob"},
 		&strings.Builder{}); err != nil {
 		t.Fatalf("run: %v", err)
 	}
@@ -527,5 +527,139 @@ func TestOutFolderVersusOutFile(t *testing.T) {
 	pending := filepath.Join(dir, "new") + string(filepath.Separator)
 	if got := outPath(options{out: pending}, []string{"alice"}); got != filepath.Join(pending, "alice-omnibus.md") {
 		t.Errorf("outPath with a trailing separator = %q", got)
+	}
+}
+
+func TestAccountsFilteredToNothingAreNamed(t *testing.T) {
+	// An account whose repositories are all forks produces no file. Saying so
+	// is the difference between a filter and a disappearance.
+	repos := []Repo{
+		{Name: "keeper", FullName: "alice/keeper", Size: 10},
+		{Name: "a-fork", FullName: "bob/a-fork", Size: 10, Fork: true},
+	}
+	var out strings.Builder
+	keep, dropped := selectRepos(repos, options{}, &out)
+	reportEmptyAccounts([]string{"alice", "bob"}, keep, dropped, &out)
+
+	if !strings.Contains(out.String(), "bob: nothing to collect") {
+		t.Errorf("the emptied account should be named, got:\n%s", out.String())
+	}
+	if !strings.Contains(out.String(), "1 forks") {
+		t.Errorf("it should say what happened to that account, got:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "alice: nothing") {
+		t.Error("an account that kept something should not be reported")
+	}
+	if !strings.Contains(out.String(), "-include-forks") {
+		t.Error("the report should name the flag that would widen it")
+	}
+	if strings.Contains(out.String(), "-max-repo-kb") {
+		t.Error("it should only name flags that apply to what happened")
+	}
+}
+
+func TestPickingIsTheDefaultAndAllSkipsIt(t *testing.T) {
+	// The tests run without a terminal, which is the same position a pipeline
+	// is in: it must collect rather than hang waiting for a keypress.
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+
+	original := stdinIsTerminal
+	stdinIsTerminal = func() bool { return false }
+	t.Cleanup(func() { stdinIsTerminal = original })
+
+	remaining := 60
+	srv := fakeGitHubWithTrees(t, testRepos(2), &remaining)
+	out := filepath.Join(t.TempDir(), "b.md")
+
+	var log strings.Builder
+	if err := Run([]string{"-api", srv.URL, "-out", out, "hihipy"}, &log); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if !strings.Contains(log.String(), "no terminal to ask through") {
+		t.Errorf("a run without a terminal should say why it did not ask:\n%s", log.String())
+	}
+	if _, err := os.Stat(out); err != nil {
+		t.Errorf("it should still have written the file: %v", err)
+	}
+}
+
+func TestGroupByOwnerKeepsCommandLineOrder(t *testing.T) {
+	repos := []Repo{
+		{Name: "x", FullName: "bob/x"},
+		{Name: "y", FullName: "alice/y"},
+		{Name: "z", FullName: "bob/z"},
+	}
+	got := groupByOwner(repos, []string{"alice", "bob"})
+	if len(got) != 2 || got[0].owner != "alice" || got[1].owner != "bob" {
+		t.Fatalf("groups = %+v, want alice then bob", got)
+	}
+	if len(got[1].repos) != 2 {
+		t.Errorf("bob has %d repositories, want 2", len(got[1].repos))
+	}
+}
+
+func TestSkipLinesNameTheOwnerWithSeveralAccounts(t *testing.T) {
+	// A bare repository name in a shared skip list does not say whose it is,
+	// and a reader will attribute it to the wrong account.
+	repos := []Repo{
+		{Name: "keeper", FullName: "alice/keeper", Size: 10},
+		{Name: "arcgis_arboretum", FullName: "bob/arcgis_arboretum", Size: 51_900},
+	}
+	var many strings.Builder
+	selectRepos(repos, options{users: []string{"alice", "bob"}, maxRepoKB: 50 * 1024}, &many)
+	if !strings.Contains(many.String(), "bob/arcgis_arboretum") {
+		t.Errorf("the skip line should name the owner, got:\n%s", many.String())
+	}
+
+	// With one account the owner is already known, so the name stays short.
+	var one strings.Builder
+	selectRepos(repos[1:], options{users: []string{"bob"}, maxRepoKB: 50 * 1024}, &one)
+	if strings.Contains(one.String(), "bob/arcgis_arboretum") {
+		t.Errorf("a single account should not repeat itself, got:\n%s", one.String())
+	}
+}
+
+func TestFilteredLinesNameTheRepositories(t *testing.T) {
+	// Daniella has two repositories and one is too large. Her picker shows one
+	// row, and a count alone would not say which one is missing.
+	lines := filteredLines(map[string][]string{
+		"over 50.0 MB (raise with -max-repo-kb)": {"arcgis_arboretum (50.7 MB)"},
+	}, false)
+	if len(lines) != 1 {
+		t.Fatalf("lines = %v, want one", lines)
+	}
+	for _, want := range []string{"1 too large", "arcgis_arboretum", "-max-repo-kb"} {
+		if !strings.Contains(lines[0], want) {
+			t.Errorf("line = %q, missing %q", lines[0], want)
+		}
+	}
+	if filteredLines(nil, false) != nil {
+		t.Error("an account that lost nothing should get no lines")
+	}
+}
+
+func TestFilteredLinesCutLongListsUnlessVerbose(t *testing.T) {
+	// whinis has 24 forks. Naming all of them buries the list they came for.
+	var forks []string
+	for i := 0; i < 24; i++ {
+		forks = append(forks, fmt.Sprintf("fork%d", i))
+	}
+	reasons := map[string][]string{"fork": forks, "archived": {"eve-jacknife"}}
+
+	short := filteredLines(reasons, false)
+	if !strings.Contains(short[0], "and 21 more") {
+		t.Errorf("long list should be cut, got %q", short[0])
+	}
+	if !strings.Contains(short[1], "eve-jacknife") {
+		t.Errorf("a single name should be given in full, got %q", short[1])
+	}
+
+	full := filteredLines(reasons, true)
+	if strings.Contains(full[0], "more") {
+		t.Errorf("-verbose should name them all, got %q", full[0])
+	}
+	if !strings.Contains(full[0], "fork23") {
+		t.Errorf("-verbose should reach the last one, got %q", full[0])
 	}
 }

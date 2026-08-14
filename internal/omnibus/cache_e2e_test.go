@@ -62,7 +62,7 @@ func TestFileTypesUseCacheOnRerun(t *testing.T) {
 
 	out := filepath.Join(t.TempDir(), "b.md")
 	for pass := 1; pass <= 2; pass++ {
-		if err := Run([]string{"-api", srv.URL, "-out", out, "hihipy"}, os.Stdout); err != nil {
+		if err := Run([]string{"-all", "-api", srv.URL, "-out", out, "hihipy"}, os.Stdout); err != nil {
 			t.Fatalf("pass %d: %v", pass, err)
 		}
 	}

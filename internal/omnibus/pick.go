@@ -201,6 +201,11 @@ func seq(n int) []int {
 
 // interactive reports whether stdin is a terminal, so -pick can fail early in a
 // pipeline instead of hanging on a prompt nobody will answer.
+// stdinIsTerminal is a variable so a test can stand where a pipeline stands.
+// Under `go test` the real check can go either way depending on how the runner
+// was invoked, and the tool's behaviour should not depend on that.
+var stdinIsTerminal = interactive
+
 func interactive() bool {
 	info, err := os.Stdin.Stat()
 	if err != nil {

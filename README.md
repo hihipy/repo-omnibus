@@ -77,7 +77,7 @@ Point it at any GitHub username:
 ./repo-omnibus hihipy
 ```
 
-It prints what it is doing as it goes, then writes a file called `hihipy-omnibus.md` into your **Downloads** folder. Open that file in any text editor, or in a Markdown reader like [Obsidian](https://obsidian.md) or [Typora](https://typora.io), or drag it into ChatGPT or Claude and start asking questions.
+It shows you the account's projects, waits for you to choose, then writes a file called `hihipy-omnibus.md` into your **Downloads** folder. Open that file in any text editor, or in a Markdown reader like [Obsidian](https://obsidian.md) or [Typora](https://typora.io), or drag it into ChatGPT or Claude and start asking questions.
 
 To see what a run would involve before doing it:
 
@@ -99,7 +99,7 @@ It works on organizations as well as people:
 ./repo-omnibus charmbracelet
 ```
 
-You can also name several accounts at once. Each gets its own file, which is usually what you want, since two people's work rarely belongs in one document:
+You can also name several accounts at once. It asks about each in turn, and each gets its own file, which is usually what you want, since two people's work rarely belongs in one document:
 
 ```bash
 ./repo-omnibus hihipy charmbracelet
@@ -123,10 +123,10 @@ In a merged file each project heading carries the owner, since two accounts can 
 
 ## Picking which projects to include
 
-Some accounts have one enormous repository that would dominate the file. Add `-pick` and it shows you the list first:
+Choosing is the default, because one enormous repository can otherwise dominate the file before you have seen it:
 
 ```bash
-./repo-omnibus -pick hihipy
+./repo-omnibus hihipy
 ```
 
 ```
@@ -139,7 +139,15 @@ Some accounts have one enormous repository that would dominate the file. Add `-p
   arrows move, space toggles, a all, n none, enter confirms, q cancels
 ```
 
-Everything starts ticked. Move with the arrow keys, press **space** to untick something, press **enter** when you are happy. The running total at the bottom updates as you go, so you can see the effect of dropping the big one. Press **q** to back out without doing anything.
+Everything starts ticked. Move with the arrow keys, press **space** to untick something, press **enter** when you are happy. The running total at the bottom updates as you go, so you can see the effect of dropping the big one. Press **q** to skip that account.
+
+To take everything without being asked, add `-all`:
+
+```bash
+./repo-omnibus -all hihipy
+```
+
+Naming several accounts asks about each one in turn, so you always know whose projects you are looking at.
 
 ---
 
@@ -256,7 +264,7 @@ Nothing disappears quietly: every excluded file is counted in the report and lis
 |---|---|
 | `-out PATH` | A filename, or a folder to put the files in; defaults to `~/Downloads` |
 | `-merge` | With several accounts, write one combined file instead of one each |
-| `-pick` | Choose projects before collecting |
+| `-all` | Take everything without asking, which is also what happens with no terminal |
 | `-dry-run` | Report what a run would involve, write nothing |
 | `-exclude NAME` | Leave a project out; use it more than once for several |
 | `-include-forks` | Include copies of other people's projects |
@@ -272,6 +280,8 @@ Nothing disappears quietly: every excluded file is counted in the report and lis
 | `-ignore-budget` | Start even when GitHub's limit looks too small |
 
 Running `./repo-omnibus -help` prints all of this in the terminal, with examples.
+
+Headings and warnings are colour-highlighted when you run it in a terminal, and plain when the output goes to a file or a pipe. Setting `NO_COLOR` turns the highlighting off everywhere.
 
 ---
 
