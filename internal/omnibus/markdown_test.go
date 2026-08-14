@@ -18,7 +18,7 @@ func TestRenderStructure(t *testing.T) {
 		Files:   []File{{Path: "README.md", Text: "# hi\n\n```sql\nselect 1;\n```\n"}},
 		Skipped: []Skipped{{Path: "logo.png", Reason: "a binary file", Detail: ".png", Size: 4096}},
 	}
-	doc := Render([]string{"hihipy"}, []Bundle{b}, time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC))
+	doc := Render([]string{"hihipy"}, []Bundle{b}, nil, time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC))
 
 	for _, want := range []string{
 		"# sql-x-ray",
@@ -48,7 +48,7 @@ func TestRenderCarriesRightsNotice(t *testing.T) {
 	doc := Render([]string{"hihipy"}, []Bundle{{
 		Repo:  Repo{Name: "r1", FullName: "hihipy/r1", HTMLURL: "u", DefaultBranch: "main"},
 		Files: []File{{Path: "main.go", Text: "package main\n"}},
-	}}, timeFixed())
+	}}, nil, timeFixed())
 
 	for _, want := range []string{
 		"**Rights.**",
@@ -64,4 +64,64 @@ func TestRenderCarriesRightsNotice(t *testing.T) {
 	if strings.Index(doc, "**Rights.**") > strings.Index(doc, "# r1") {
 		t.Error("the notice should come before the repositories")
 	}
+}
+
+func TestHeaderStatesWhatWasActuallyCollected(t *testing.T) {
+	one := []Bundle{{
+		Repo:  Repo{Name: "sql-x-ray", FullName: "hihipy/sql-x-ray", HTMLURL: "u", DefaultBranch: "main"},
+		Files: []File{{Path: "a.sql", Text: "select 1;\n"}},
+	}}
+	info := map[string]AccountInfo{"hihipy": {Total: 21}}
+
+	doc := Render([]string{"hihipy"}, one, info, timeFixed())
+	if !strings.Contains(doc, "collected 1 of 21 public repositories") {
+		t.Errorf("a partial selection should say so, got:\n%s", firstLine(doc))
+	}
+	if strings.Contains(doc, "every public repository") {
+		t.Error("the old wording claimed more than the file holds")
+	}
+
+	// Taking everything should read as everything.
+	all := map[string]AccountInfo{"hihipy": {Total: 1}}
+	if got := Render([]string{"hihipy"}, one, all, timeFixed()); !strings.Contains(got, "all 1 public repositories") {
+		t.Errorf("a complete run should say so, got:\n%s", firstLine(got))
+	}
+}
+
+func TestNotCollectedSectionNamesWhatIsMissing(t *testing.T) {
+	info := map[string]AccountInfo{"hihipy": {
+		Total: 4,
+		Left: []LeftOut{
+			{Name: "hihipy.github.io", Reason: "not selected", URL: "https://github.com/hihipy/hihipy.github.io"},
+			{Name: "some-fork", Reason: "a fork of someone else's project", URL: "https://github.com/hihipy/some-fork"},
+			{Name: "big-one", Reason: "too large (50.0 MB limit)", URL: "https://github.com/hihipy/big-one"},
+		},
+	}}
+	doc := Render([]string{"hihipy"}, []Bundle{{
+		Repo:  Repo{Name: "kept", FullName: "hihipy/kept", HTMLURL: "u", DefaultBranch: "main"},
+		Files: []File{{Path: "a.go", Text: "package main\n"}},
+	}}, info, timeFixed())
+
+	for _, want := range []string{
+		"## Not Collected",
+		"3 repositories on the account are not in this file",
+		"[hihipy.github.io](https://github.com/hihipy/hihipy.github.io) | not selected",
+		"a fork of someone else's project",
+		"too large (50.0 MB limit)",
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("document missing %q", want)
+		}
+	}
+	// It belongs near the top, with the other orientation.
+	if strings.Index(doc, "## Not Collected") > strings.Index(doc, "# kept") {
+		t.Error("Not Collected should come before the repositories")
+	}
+}
+
+func firstLine(s string) string {
+	if i := strings.Index(s, "\n"); i > 0 {
+		return s[:i]
+	}
+	return s
 }

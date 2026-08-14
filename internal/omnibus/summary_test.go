@@ -104,7 +104,7 @@ func TestTerminalSummaryWhenNothingSkipped(t *testing.T) {
 }
 
 func TestRenderCarriesNotIncluded(t *testing.T) {
-	doc := Render([]string{"hihipy"}, skippedBundles(), timeFixed())
+	doc := Render([]string{"hihipy"}, skippedBundles(), nil, timeFixed())
 	for _, want := range []string{
 		"## Not Included",
 		"5 files could not be carried as text",

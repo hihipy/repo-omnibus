@@ -147,6 +147,7 @@ func Run(args []string, out io.Writer) error {
 
 	keep, dropped := selectRepos(repos, opt, out)
 	opt.dropped = dropped
+	info := accountInfo(repos, dropped)
 	reportEmptyAccounts(opt.users, keep, dropped, out)
 	if len(keep) == 0 {
 		return errors.New("no repositories to collect")
@@ -165,10 +166,12 @@ func Run(args []string, out io.Writer) error {
 		if !stdinIsTerminal() {
 			fmt.Fprintln(out, "no terminal to ask through, collecting everything")
 		} else {
+			offered := keep
 			keep, err = pickPerAccount(keep, opt, out)
 			if err != nil {
 				return err
 			}
+			noteUnpicked(info, offered, keep)
 			if len(keep) == 0 {
 				return errors.New("nothing selected")
 			}
@@ -229,19 +232,19 @@ func Run(args []string, out io.Writer) error {
 
 	fmt.Fprint(out, TerminalSummary(bundles, 8))
 
-	return write(bundles, opt, out)
+	return write(bundles, info, opt, out)
 }
 
 // write saves the bundles. Several accounts get a file each, because two
 // people's work read together is rarely one document; -merge asks for the
 // combined file instead.
-func write(bundles []Bundle, opt options, out io.Writer) error {
+func write(bundles []Bundle, info map[string]AccountInfo, opt options, out io.Writer) error {
 	groups := groupBundlesByOwner(bundles, opt.users)
 	if opt.merge || len(groups) == 1 {
-		return writeOne(opt.users, bundles, outPath(opt, opt.users), out)
+		return writeOne(opt.users, bundles, info, outPath(opt, opt.users), out)
 	}
 	for _, g := range groups {
-		if err := writeOne([]string{g.owner}, g.bundles,
+		if err := writeOne([]string{g.owner}, g.bundles, info,
 			outPath(opt, []string{g.owner}), out); err != nil {
 			return err
 		}
@@ -343,8 +346,8 @@ func outPath(opt options, users []string) string {
 	return opt.out
 }
 
-func writeOne(users []string, bundles []Bundle, path string, out io.Writer) error {
-	doc := Render(users, bundles, time.Now())
+func writeOne(users []string, bundles []Bundle, info map[string]AccountInfo, path string, out io.Writer) error {
+	doc := Render(users, bundles, info, time.Now())
 	if dir := filepath.Dir(path); dir != "." {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("creating %s: %w", dir, err)
@@ -546,6 +549,83 @@ func pickPerAccount(keep []Repo, opt options, out io.Writer) ([]Repo, error) {
 		chosen = append(chosen, picked...)
 	}
 	return chosen, nil
+}
+
+// accountInfo records how many repositories each account holds and which of
+// them a filter removed, so the finished document can say what is missing.
+func accountInfo(repos []Repo, dropped map[string]map[string][]string) map[string]AccountInfo {
+	info := map[string]AccountInfo{}
+
+	byName := map[string]Repo{}
+	for _, r := range repos {
+		owner := strings.ToLower(ownerOf(r))
+		entry := info[owner]
+		entry.Total++
+		info[owner] = entry
+		byName[strings.ToLower(r.FullName)] = r
+	}
+
+	for owner, reasons := range dropped {
+		key := strings.ToLower(owner)
+		entry := info[key]
+		for reason, names := range reasons {
+			for _, name := range names {
+				// The size reason carries the size in the name; the repository
+				// itself is the part before the bracket.
+				bare := name
+				if i := strings.Index(bare, " ("); i > 0 {
+					bare = bare[:i]
+				}
+				entry.Left = append(entry.Left, LeftOut{
+					Name:   bare,
+					Reason: plainReason(reason),
+					URL:    fmt.Sprintf("https://github.com/%s/%s", owner, bare),
+				})
+			}
+		}
+		info[key] = entry
+	}
+	return info
+}
+
+// noteUnpicked records the repositories that were offered and not chosen, which
+// is a different thing from one a filter removed.
+func noteUnpicked(info map[string]AccountInfo, offered, chosen []Repo) {
+	taken := map[string]bool{}
+	for _, r := range chosen {
+		taken[r.FullName] = true
+	}
+	for _, r := range offered {
+		if taken[r.FullName] {
+			continue
+		}
+		owner := strings.ToLower(ownerOf(r))
+		entry := info[owner]
+		entry.Left = append(entry.Left, LeftOut{
+			Name:   r.Name,
+			Reason: "not selected",
+			URL:    r.HTMLURL,
+		})
+		info[owner] = entry
+	}
+}
+
+// plainReason turns an internal reason into something a reader recognises.
+func plainReason(reason string) string {
+	switch {
+	case reason == "fork":
+		return "a fork of someone else's project"
+	case reason == "archived":
+		return "archived"
+	case reason == "empty":
+		return "empty"
+	case reason == "excluded by name":
+		return "excluded with -exclude"
+	case strings.HasPrefix(reason, "over "):
+		return "too large (" + strings.TrimSuffix(
+			strings.TrimPrefix(reason, "over "), " (raise with -max-repo-kb)") + " limit)"
+	}
+	return reason
 }
 
 // filteredLines describes what an account lost, naming the repositories rather

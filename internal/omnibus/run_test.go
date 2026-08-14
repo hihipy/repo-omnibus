@@ -663,3 +663,44 @@ func TestFilteredLinesCutLongListsUnlessVerbose(t *testing.T) {
 		t.Errorf("-verbose should reach the last one, got %q", full[0])
 	}
 }
+
+func TestAccountInfoCountsAndExplainsWhatIsMissing(t *testing.T) {
+	repos := []Repo{
+		{Name: "kept", FullName: "hihipy/kept", HTMLURL: "https://github.com/hihipy/kept", Size: 10},
+		{Name: "a-fork", FullName: "hihipy/a-fork", HTMLURL: "https://github.com/hihipy/a-fork", Size: 10, Fork: true},
+		{Name: "big", FullName: "hihipy/big", HTMLURL: "https://github.com/hihipy/big", Size: 60_000},
+	}
+	var out strings.Builder
+	keep, dropped := selectRepos(repos, options{maxRepoKB: 50 * 1024}, &out)
+	info := accountInfo(repos, dropped)
+
+	if info["hihipy"].Total != 3 {
+		t.Errorf("Total = %d, want all 3 counted before filtering", info["hihipy"].Total)
+	}
+
+	reasons := map[string]string{}
+	for _, l := range info["hihipy"].Left {
+		reasons[l.Name] = l.Reason
+	}
+	if reasons["a-fork"] != "a fork of someone else's project" {
+		t.Errorf("fork reason = %q", reasons["a-fork"])
+	}
+	if !strings.Contains(reasons["big"], "too large") {
+		t.Errorf("size reason = %q, want it readable", reasons["big"])
+	}
+	if strings.Contains(reasons["big"], "raise with") {
+		t.Errorf("size reason = %q, should not carry a flag hint into the document", reasons["big"])
+	}
+
+	// Unticking is a different reason from filtering, and both must show.
+	noteUnpicked(info, keep, nil)
+	var sawUnpicked bool
+	for _, l := range info["hihipy"].Left {
+		if l.Name == "kept" && l.Reason == "not selected" {
+			sawUnpicked = true
+		}
+	}
+	if !sawUnpicked {
+		t.Errorf("an unticked repository should be recorded, got %+v", info["hihipy"].Left)
+	}
+}

@@ -72,6 +72,21 @@ func anchor(name string) string {
 	return strings.ReplaceAll(s, " ", "-")
 }
 
+// LeftOut is one repository the bundle does not contain, and why. A reader
+// checking someone's work needs to know what is missing as much as what is
+// here, and "every public repository" is false the moment one is unticked.
+type LeftOut struct {
+	Name   string
+	Reason string
+	URL    string
+}
+
+// AccountInfo is what an account held before anything was filtered or unticked.
+type AccountInfo struct {
+	Total int
+	Left  []LeftOut
+}
+
 // heading names a repository. Collecting several accounts at once can bring in
 // two repositories with the same name, so the owner joins the heading whenever
 // more than one account is in play.
@@ -208,7 +223,7 @@ func repoFacts(b Bundle) []string {
 
 // Render assembles the whole document: a lead paragraph, a contents table, then
 // each repository as an H1 with its metadata and every file it tracks.
-func Render(users []string, bundles []Bundle, now time.Time) string {
+func Render(users []string, bundles []Bundle, info map[string]AccountInfo, now time.Time) string {
 	manyOwners := len(users) > 1
 	totalFiles, totalChars := 0, 0
 	for _, b := range bundles {
@@ -219,12 +234,22 @@ func Render(users []string, bundles []Bundle, now time.Time) string {
 	var out []string
 	add := func(lines ...string) { out = append(out, lines...) }
 
-	owned := "every public repository owned by"
+	total := 0
+	for _, u := range users {
+		total += info[strings.ToLower(u)].Total
+	}
+	scope := fmt.Sprintf("%d of %s public repositories owned by", len(bundles), commas(int64(total)))
+	if total > 0 && len(bundles) == total {
+		scope = fmt.Sprintf("all %s public repositories owned by", commas(int64(total)))
+	}
+	if total == 0 {
+		scope = "the public repositories owned by"
+	}
 	if manyOwners {
-		owned = "every public repository owned by each of"
+		scope += " each of"
 	}
 	add(fmt.Sprintf("**RepoOmnibus** collected %s %s on %s.",
-		owned, ownersOf(users), now.UTC().Format("2006-01-02 15:04 UTC")))
+		scope, ownersOf(users), now.UTC().Format("2006-01-02 15:04 UTC")))
 	add("")
 	add(fmt.Sprintf("%d repositories, %s files, %s characters, roughly %s tokens.",
 		len(bundles), commas(int64(totalFiles)), commas(int64(totalChars)),
@@ -251,6 +276,24 @@ func Render(users []string, bundles []Bundle, now time.Time) string {
 			escapePipe(b.Repo.Description), commas(int64(len(b.Files)))))
 	}
 	add("")
+
+	// What the account holds that this file does not, so a reader can go and
+	// look rather than assume the account is this and nothing more.
+	var left []LeftOut
+	for _, u := range users {
+		left = append(left, info[strings.ToLower(u)].Left...)
+	}
+	if len(left) > 0 {
+		add("## Not Collected", "")
+		add(fmt.Sprintf("%d repositories on the account are not in this file. "+
+			"They were left out by choice or by a filter, and each is linked below.",
+			len(left)))
+		add("", "| Repository | Why it is not here |", "| --- | --- |")
+		for _, l := range left {
+			add(fmt.Sprintf("| [%s](%s) | %s |", l.Name, l.URL, l.Reason))
+		}
+		add("")
+	}
 
 	if entries := SkipEntries(bundles); len(entries) > 0 {
 		stats := SkipStats(bundles)
