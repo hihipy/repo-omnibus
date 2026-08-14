@@ -9,9 +9,9 @@
 [![Go](https://img.shields.io/badge/Go-00ADD8?style=flat&logo=go&logoColor=white)](https://go.dev)
 [![Markdown](https://img.shields.io/badge/Markdown-000000?style=flat&logo=markdown&logoColor=white)](https://commonmark.org)
 
-**Every repository someone owns, in one file.**
+**Every repository an account owns, in one file.**
 
-RepoOmnibus takes a GitHub username and produces a single document containing all of that person's public work: what each project is, how big it is, and the full text of every file worth reading. You can read the result yourself, or paste it into ChatGPT or Claude and ask questions about the whole body of work at once.
+RepoOmnibus takes one or more GitHub usernames and produces a single document containing all of that person's public work: what each project is, how big it is, and the full text of every file worth reading. You can read the result yourself, or paste it into ChatGPT or Claude and ask questions about the whole body of work at once.
 
 ---
 
@@ -98,6 +98,14 @@ It works on organizations as well as people:
 ```bash
 ./repo-omnibus charmbracelet
 ```
+
+You can also name several accounts, and they land in one file together. That is the case for a personal account plus a work organization, or for comparing two people's work side by side:
+
+```bash
+./repo-omnibus hihipy charmbracelet
+```
+
+When more than one account is involved, each project heading carries the owner, since two accounts can hold a project with the same name.
 
 ---
 

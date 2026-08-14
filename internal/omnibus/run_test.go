@@ -371,7 +371,7 @@ func TestDefaultOutIsTheDownloadsFolder(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	got := defaultOut("hihipy")
+	got := defaultOut([]string{"hihipy"})
 	want := filepath.Join(home, "Downloads", "hihipy-omnibus.md")
 	if got != want {
 		t.Errorf("defaultOut = %q, want %q", got, want)
@@ -382,7 +382,7 @@ func TestDefaultOutFallsBackWithoutDownloads(t *testing.T) {
 	// Not every machine has a Downloads folder, and a missing one should not
 	// stop a run.
 	t.Setenv("HOME", t.TempDir())
-	if got := defaultOut("hihipy"); got != "hihipy-omnibus.md" {
+	if got := defaultOut([]string{"hihipy"}); got != "hihipy-omnibus.md" {
 		t.Errorf("defaultOut = %q, want the plain filename", got)
 	}
 }
@@ -400,5 +400,87 @@ func TestOutFlagStillWins(t *testing.T) {
 	}
 	if _, err := os.Stat(out); err != nil {
 		t.Errorf("-out was ignored: %v", err)
+	}
+}
+
+func TestDefaultOutNamesEveryAccount(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, "Downloads"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	got := defaultOut([]string{"hihipy", "charmbracelet"})
+	want := filepath.Join(home, "Downloads", "hihipy-charmbracelet-omnibus.md")
+	if got != want {
+		t.Errorf("defaultOut = %q, want %q", got, want)
+	}
+
+	// Past three names the filename would be unreadable, so it counts instead.
+	many := defaultOut([]string{"a", "b", "c", "d", "e"})
+	if filepath.Base(many) != "a-and-4-more-omnibus.md" {
+		t.Errorf("defaultOut for five accounts = %q", filepath.Base(many))
+	}
+}
+
+func TestSeveralAccountsCollectIntoOneFile(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+
+	// Both accounts hold a repository called "docs", which is exactly the case
+	// that would collide if headings carried the bare name.
+	byUser := map[string][]Repo{
+		"alice": {{Name: "docs", FullName: "alice/docs", HTMLURL: "https://github.com/alice/docs",
+			Size: 10, DefaultBranch: "main", Description: "Alice's notes"}},
+		"bob": {{Name: "docs", FullName: "bob/docs", HTMLURL: "https://github.com/bob/docs",
+			Size: 10, DefaultBranch: "main", Description: "Bob's notes"}},
+	}
+
+	remaining := 60
+	mux := http.NewServeMux()
+	limits := func(w http.ResponseWriter) {
+		w.Header().Set("X-RateLimit-Limit", "60")
+		w.Header().Set("X-RateLimit-Remaining", fmt.Sprintf("%d", remaining))
+		w.Header().Set("X-RateLimit-Reset", fmt.Sprintf("%d", time.Now().Add(time.Hour).Unix()))
+	}
+	mux.HandleFunc("/rate_limit", func(w http.ResponseWriter, r *http.Request) {
+		limits(w)
+		json.NewEncoder(w).Encode(map[string]any{"rate": map[string]any{
+			"limit": 60, "remaining": remaining, "reset": time.Now().Add(time.Hour).Unix()}})
+	})
+	mux.HandleFunc("/users/", func(w http.ResponseWriter, r *http.Request) {
+		limits(w)
+		user := strings.Split(strings.TrimPrefix(r.URL.Path, "/users/"), "/")[0]
+		json.NewEncoder(w).Encode(byUser[user])
+	})
+	mux.HandleFunc("/repos/", func(w http.ResponseWriter, r *http.Request) {
+		limits(w)
+		if strings.Contains(r.URL.Path, "/git/trees/") {
+			json.NewEncoder(w).Encode(map[string]any{"tree": []map[string]string{
+				{"path": "notes.md", "type": "blob"}}})
+			return
+		}
+		w.Write(makeTarball(t, "w", map[string][]byte{"README.md": []byte("# notes\n")}))
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	out := filepath.Join(t.TempDir(), "both.md")
+	if err := Run([]string{"-api", srv.URL, "-out", out, "alice", "bob"}, &strings.Builder{}); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	doc, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(doc)
+	for _, want := range []string{"# alice/docs", "# bob/docs", "owned by each of"} {
+		if !strings.Contains(text, want) {
+			t.Errorf("document missing %q", want)
+		}
+	}
+	if strings.Contains(text, "\n# docs\n") {
+		t.Error("bare names would collide across accounts")
 	}
 }

@@ -64,11 +64,40 @@ func fenceFor(text string) string {
 	return strings.Repeat("`", longest)
 }
 
-// anchor reproduces GitHub's heading-to-fragment rule for repository names.
+// anchor reproduces GitHub's heading-to-fragment rule for a heading.
 func anchor(name string) string {
 	s := strings.ToLower(name)
 	s = strings.ReplaceAll(s, ".", "")
+	s = strings.ReplaceAll(s, "/", "")
 	return strings.ReplaceAll(s, " ", "-")
+}
+
+// heading names a repository. Collecting several accounts at once can bring in
+// two repositories with the same name, so the owner joins the heading whenever
+// more than one account is in play.
+func heading(r Repo, manyOwners bool) string {
+	if manyOwners {
+		return r.FullName
+	}
+	return r.Name
+}
+
+// ownersOf lists the accounts a set of bundles came from, in the order given.
+func ownersOf(users []string) string {
+	switch len(users) {
+	case 1:
+		return fmt.Sprintf("[%s](https://github.com/%s)", users[0], users[0])
+	case 2:
+		return fmt.Sprintf("[%s](https://github.com/%s) and [%s](https://github.com/%s)",
+			users[0], users[0], users[1], users[1])
+	}
+	parts := make([]string, 0, len(users))
+	for _, u := range users[:len(users)-1] {
+		parts = append(parts, fmt.Sprintf("[%s](https://github.com/%s)", u, u))
+	}
+	last := users[len(users)-1]
+	return fmt.Sprintf("%s, and [%s](https://github.com/%s)",
+		strings.Join(parts, ", "), last, last)
 }
 
 func commas(n int64) string {
@@ -179,7 +208,8 @@ func repoFacts(b Bundle) []string {
 
 // Render assembles the whole document: a lead paragraph, a contents table, then
 // each repository as an H1 with its metadata and every file it tracks.
-func Render(user string, bundles []Bundle, now time.Time) string {
+func Render(users []string, bundles []Bundle, now time.Time) string {
+	manyOwners := len(users) > 1
 	totalFiles, totalChars := 0, 0
 	for _, b := range bundles {
 		totalFiles += len(b.Files)
@@ -189,9 +219,12 @@ func Render(user string, bundles []Bundle, now time.Time) string {
 	var out []string
 	add := func(lines ...string) { out = append(out, lines...) }
 
-	add(fmt.Sprintf("**RepoOmnibus** collected every public repository owned by "+
-		"[%s](https://github.com/%s) on %s.",
-		user, user, now.UTC().Format("2006-01-02 15:04 UTC")))
+	owned := "every public repository owned by"
+	if manyOwners {
+		owned = "every public repository owned by each of"
+	}
+	add(fmt.Sprintf("**RepoOmnibus** collected %s %s on %s.",
+		owned, ownersOf(users), now.UTC().Format("2006-01-02 15:04 UTC")))
 	add("")
 	add(fmt.Sprintf("%d repositories, %s files, %s characters, roughly %s tokens.",
 		len(bundles), commas(int64(totalFiles)), commas(int64(totalChars)),
@@ -212,8 +245,9 @@ func Render(user string, bundles []Bundle, now time.Time) string {
 	add("", "## Contents", "")
 	add("| Repository | Language | Description | Files |", "| --- | --- | --- | --- |")
 	for _, b := range bundles {
+		h := heading(b.Repo, manyOwners)
 		add(fmt.Sprintf("| [%s](#%s) | %s | %s | %s |",
-			b.Repo.Name, anchor(b.Repo.Name), b.Repo.Language,
+			h, anchor(h), b.Repo.Language,
 			escapePipe(b.Repo.Description), commas(int64(len(b.Files)))))
 	}
 	add("")
@@ -235,15 +269,16 @@ func Render(user string, bundles []Bundle, now time.Time) string {
 			if e.Detail != "" {
 				reason += ": " + e.Detail
 			}
+			h := heading(e.Repo, manyOwners)
 			add(fmt.Sprintf("| [`%s`](%s) | [%s](#%s) | %s | %s |",
-				e.Path, blobURL(e.Repo, e.Path), e.Repo.Name, anchor(e.Repo.Name),
+				e.Path, blobURL(e.Repo, e.Path), h, anchor(h),
 				reason, humanBytes(e.Size)))
 		}
 		add("")
 	}
 
 	for _, b := range bundles {
-		add("---", "", "# "+b.Repo.Name, "")
+		add("---", "", "# "+heading(b.Repo, manyOwners), "")
 		if b.Repo.Description != "" {
 			add(b.Repo.Description, "")
 		}
@@ -269,7 +304,7 @@ func Render(user string, bundles []Bundle, now time.Time) string {
 		}
 
 		if len(b.Skipped) > 0 {
-			add("## Skipped in "+b.Repo.Name, "", "| File | Reason | Size |", "| --- | --- | --- |")
+			add("## Skipped in "+heading(b.Repo, manyOwners), "", "| File | Reason | Size |", "| --- | --- | --- |")
 			for _, s := range b.Skipped {
 				reason := s.Reason
 				if s.Detail != "" {

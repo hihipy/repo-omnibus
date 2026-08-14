@@ -18,7 +18,7 @@ func TestRenderStructure(t *testing.T) {
 		Files:   []File{{Path: "README.md", Text: "# hi\n\n```sql\nselect 1;\n```\n"}},
 		Skipped: []Skipped{{Path: "logo.png", Reason: "a binary file", Detail: ".png", Size: 4096}},
 	}
-	doc := Render("hihipy", []Bundle{b}, time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC))
+	doc := Render([]string{"hihipy"}, []Bundle{b}, time.Date(2026, 8, 14, 12, 0, 0, 0, time.UTC))
 
 	for _, want := range []string{
 		"# sql-x-ray",
@@ -45,7 +45,7 @@ func timeFixed() time.Time {
 func TestRenderCarriesRightsNotice(t *testing.T) {
 	// The bundle is the artifact that travels, so the notice belongs in it and
 	// not only in the README.
-	doc := Render("hihipy", []Bundle{{
+	doc := Render([]string{"hihipy"}, []Bundle{{
 		Repo:  Repo{Name: "r1", FullName: "hihipy/r1", HTMLURL: "u", DefaultBranch: "main"},
 		Files: []File{{Path: "main.go", Text: "package main\n"}},
 	}}, timeFixed())

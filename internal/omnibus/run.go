@@ -25,7 +25,7 @@ func (r *repeatable) Set(v string) error {
 }
 
 type options struct {
-	user            string
+	users           []string
 	out             string
 	exclude         repeatable
 	includeForks    bool
@@ -87,13 +87,13 @@ func Run(args []string, out io.Writer) error {
 		}
 		return err
 	}
-	if fs.NArg() != 1 {
+	if fs.NArg() == 0 {
 		fs.Usage()
-		return errors.New("expected exactly one GitHub username")
+		return errors.New("name at least one GitHub account")
 	}
-	opt.user = fs.Arg(0)
+	opt.users = fs.Args()
 	if opt.out == "" {
-		opt.out = defaultOut(opt.user)
+		opt.out = defaultOut(opt.users)
 	}
 
 	client := NewClient(opt.apiURL)
@@ -117,24 +117,31 @@ func Run(args []string, out io.Writer) error {
 			quota.ResetIn())
 	}
 
-	repos, err := client.PublicRepos(opt.user)
-	if err != nil {
-		var apiErr *APIError
-		if errors.As(err, &apiErr) {
-			switch apiErr.Status {
-			case http.StatusNotFound:
-				return fmt.Errorf("no GitHub account named %q", opt.user)
-			case http.StatusForbidden, http.StatusTooManyRequests:
-				return fmt.Errorf("GitHub rate limit reached, resets in %s. "+
-					"Set GITHUB_TOKEN to raise it to 5,000 an hour", client.Budget.ResetIn())
-			case http.StatusUnauthorized:
-				return errors.New("GitHub rejected the token in GITHUB_TOKEN")
+	// Several accounts are collected into one document, which is the point of
+	// naming more than one: a personal account and a work organization read
+	// better together than as two files.
+	var repos []Repo
+	for _, user := range opt.users {
+		batch, err := client.PublicRepos(user)
+		if err != nil {
+			var apiErr *APIError
+			if errors.As(err, &apiErr) {
+				switch apiErr.Status {
+				case http.StatusNotFound:
+					return fmt.Errorf("no GitHub account named %q", user)
+				case http.StatusForbidden, http.StatusTooManyRequests:
+					return fmt.Errorf("GitHub rate limit reached, resets in %s. "+
+						"Set GITHUB_TOKEN to raise it to 5,000 an hour", client.Budget.ResetIn())
+				case http.StatusUnauthorized:
+					return errors.New("GitHub rejected the token in GITHUB_TOKEN")
+				}
 			}
+			return fmt.Errorf("listing repositories for %s failed: %w", user, err)
 		}
-		return fmt.Errorf("listing repositories failed: %w", err)
-	}
-	if len(repos) == 0 {
-		return fmt.Errorf("%q has no public repositories", opt.user)
+		if len(batch) == 0 {
+			return fmt.Errorf("%q has no public repositories", user)
+		}
+		repos = append(repos, batch...)
 	}
 
 	keep := selectRepos(repos, opt, out)
@@ -219,7 +226,7 @@ func Run(args []string, out io.Writer) error {
 
 	fmt.Fprint(out, TerminalSummary(bundles, 8))
 
-	doc := Render(opt.user, bundles, time.Now())
+	doc := Render(opt.users, bundles, time.Now())
 	if dir := filepath.Dir(opt.out); dir != "." {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("creating %s: %w", dir, err)
@@ -238,8 +245,11 @@ func Run(args []string, out io.Writer) error {
 // working directory is where the tool happens to be run from, which is rarely
 // the same place. It falls back to the working directory when there is no home
 // directory or no Downloads folder in it.
-func defaultOut(user string) string {
-	name := user + "-omnibus.md"
+func defaultOut(users []string) string {
+	name := strings.Join(users, "-") + "-omnibus.md"
+	if len(users) > 3 {
+		name = fmt.Sprintf("%s-and-%d-more-omnibus.md", users[0], len(users)-1)
+	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return name
@@ -259,7 +269,7 @@ func usage(fs *flag.FlagSet) {
 Markdown file, readable on its own and usable as context for a language model.
 
 Usage:
-  repo-omnibus [flags] <github-user>
+  repo-omnibus [flags] <github-user> [more-users...]
 
 Examples:
   repo-omnibus hihipy
@@ -276,6 +286,10 @@ Examples:
 
   repo-omnibus -exclude notes -exclude scratch hihipy
         Leave named repositories out
+
+  repo-omnibus hihipy charmbracelet
+        Collect several accounts into one file. Repository headings carry the
+        owner, since two accounts can hold the same name.
 
 Rate limits:
   GitHub allows 60 requests an hour without a token and 5,000 with one. A run
