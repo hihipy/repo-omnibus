@@ -1,0 +1,10 @@
+# The compiled binary, which takes its name from the module.
+/repo-omnibus
+
+# Bundles this tool writes, in case one is generated inside the repo.
+*-omnibus.md
+
+# Go build and test output.
+*.test
+*.out
+/dist/

@@ -1,0 +1,9 @@
+# Patterns of URLs lychee should skip during link checks.
+# One regex per line. Lines starting with # are ignored.
+
+# The repo's own deep links. Checking them at push time creates noise when a
+# file is renamed in the same commit.
+^https://github\.com/hihipy/repo-omnibus/
+
+# Example accounts and paths that appear in documentation, not as real links.
+^https://github\.com/hihipy/sql-x-ray/blob/

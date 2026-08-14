@@ -1,0 +1,55 @@
+name: Go
+
+on:
+  # Run on pushes to main that touch the code or the module
+  push:
+    branches: [main]
+    paths:
+      - "**.go"
+      - "go.mod"
+      - ".github/workflows/go.yml"
+
+  # Run on pull requests that touch the code or the module
+  pull_request:
+    paths:
+      - "**.go"
+      - "go.mod"
+      - ".github/workflows/go.yml"
+
+  # Allow manual runs from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  test:
+    # The tool reads a real terminal and a real cache directory, so it is worth
+    # knowing it builds and passes on the platforms people run it from.
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: true
+
+      - name: Check formatting
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "gofmt would change:"
+            echo "$unformatted"
+            exit 1
+          fi
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test -race ./...
+
+      - name: Build
+        run: go build ./cmd/repo-omnibus
