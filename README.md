@@ -1,7 +1,6 @@
 # RepoOmnibus
 
 [![Link Check](https://github.com/hihipy/repo-omnibus/actions/workflows/links.yml/badge.svg)](https://github.com/hihipy/repo-omnibus/actions/workflows/links.yml)
-[![Go](https://github.com/hihipy/repo-omnibus/actions/workflows/go.yml/badge.svg)](https://github.com/hihipy/repo-omnibus/actions/workflows/go.yml)
 [![License: CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
 
 **Built with**
@@ -10,25 +9,53 @@
 [![Go](https://img.shields.io/badge/Go-00ADD8?style=flat&logo=go&logoColor=white)](https://go.dev)
 [![Markdown](https://img.shields.io/badge/Markdown-000000?style=flat&logo=markdown&logoColor=white)](https://commonmark.org)
 
-**Every repository you own, in one file.**
+**Every repository someone owns, in one file.**
 
-RepoOmnibus reads every public repository on a GitHub account and writes a single Markdown file containing all of it: each repository's description, its statistics, and the full text of every file worth reading. The result is meant to be read by a person or handed to a language model, and it works for either.
-
----
-
-## Why this exists
-
-Several tools turn one repository into a single file for an AI assistant. None of them take an account. If you want to show someone the shape of your work, or ask a model a question that spans four of your projects at once, you are left copying files by hand.
-
-There is a second problem those tools share. A repository is full of text that nobody reads: lock files, minified bundles, CAD geometry, recorded test output, license boilerplate repeated in every project. It is all valid text, so it all gets included, and it can be most of what you end up pasting. On one real account it was two thirds.
-
-RepoOmnibus does both jobs. It collects the account, and it leaves out the noise.
+RepoOmnibus takes a GitHub username and produces a single document containing all of that person's public work: what each project is, how big it is, and the full text of every file worth reading. You can read the result yourself, or paste it into ChatGPT or Claude and ask questions about the whole body of work at once.
 
 ---
 
-## Getting started
+## What problem this solves
 
-You need [Go 1.22 or newer](https://go.dev/dl/).
+Say you want to understand what someone has built, or ask an AI assistant a question that spans several of your own projects. Today that means opening repository after repository and copying files by hand.
+
+Tools exist that turn **one** repository into one file. None of them take a whole account.
+
+There is a second problem. Code projects are full of text nobody reads: dependency lists thousands of lines long, machine-written data files, the same license repeated in every project. It is all technically readable, so those tools include it, and it can end up being most of what you paste. On one real account it was two thirds of the file.
+
+RepoOmnibus does both jobs. It collects the whole account, and it leaves out the noise.
+
+---
+
+## Installing it
+
+You need two things, and both are free.
+
+### Step 1: install Go
+
+Go is the programming language this tool is written in. Installing it gives you the command that turns the source code into a working program.
+
+**macOS.** If you have [Homebrew](https://brew.sh), open **Terminal** and run:
+
+```bash
+brew install go
+```
+
+If you do not have Homebrew, download the macOS installer from [go.dev/dl](https://go.dev/dl/) and double-click it.
+
+**Windows.** Download the Windows installer from [go.dev/dl](https://go.dev/dl/) and run it. Then use **PowerShell** wherever this page says Terminal.
+
+**Linux.** Use your package manager, for example `sudo apt install golang-go`, or download from [go.dev/dl](https://go.dev/dl/).
+
+To check it worked, run this. It should print a version number.
+
+```bash
+go version
+```
+
+### Step 2: download and build this tool
+
+In Terminal, run these three lines one at a time:
 
 ```bash
 git clone https://github.com/hihipy/repo-omnibus.git
@@ -36,23 +63,47 @@ cd repo-omnibus
 go build -o repo-omnibus ./cmd/repo-omnibus
 ```
 
-Then point it at any account:
+The first line copies this project to your computer. The second moves into the folder it created. The third builds the program, which takes a few seconds and prints nothing when it works.
+
+You now have a file called `repo-omnibus` in that folder. That is the whole tool: one file, nothing installed anywhere else, nothing running in the background.
+
+---
+
+## Using it
+
+Point it at any GitHub username:
 
 ```bash
 ./repo-omnibus hihipy
 ```
 
-That writes `hihipy-omnibus.md` in the current directory. To see what a run would cost before spending anything:
+It prints what it is doing as it goes, then writes a file called `hihipy-omnibus.md` in the same folder. Open that file in any text editor, or in a Markdown reader like [Obsidian](https://obsidian.md) or [Typora](https://typora.io), or drag it into ChatGPT or Claude and start asking questions.
+
+To see what a run would involve before doing it:
 
 ```bash
 ./repo-omnibus -dry-run hihipy
 ```
 
+That reports how many repositories there are and roughly how big the result would be, and writes nothing.
+
+To save the file somewhere else:
+
+```bash
+./repo-omnibus -out ~/Downloads/my-work.md hihipy
+```
+
+It works on organizations as well as people:
+
+```bash
+./repo-omnibus charmbracelet
+```
+
 ---
 
-## Choosing repositories
+## Picking which projects to include
 
-`-pick` lists the account and waits. Everything starts selected, so pressing enter takes all of it.
+Some accounts have one enormous repository that would dominate the file. Add `-pick` and it shows you the list first:
 
 ```bash
 ./repo-omnibus -pick hihipy
@@ -68,21 +119,29 @@ That writes `hihipy-omnibus.md` in the current directory. To see what a run woul
   arrows move, space toggles, a all, n none, enter confirms, q cancels
 ```
 
-The size total updates as you go, which matters when one repository is a hundred times the size of the others. If the terminal cannot be driven, it falls back to typing numbers, names, or globs.
+Everything starts ticked. Move with the arrow keys, press **space** to untick something, press **enter** when you are happy. The running total at the bottom updates as you go, so you can see the effect of dropping the big one. Press **q** to back out without doing anything.
 
 ---
 
-## Rate limits
+## A note on GitHub's limits
 
-GitHub allows 60 requests an hour without a token and 5,000 with one. A run costs one request per repository, plus one more for each repository whose file list is not already cached.
+GitHub lets anyone make 60 requests an hour without signing in. Each repository costs about one request, so accounts up to roughly 25 repositories work with no setup at all.
+
+Above that, you need a token, which is a password-like string that tells GitHub who is asking. It raises the limit to 5,000 an hour. Getting one takes two minutes:
+
+1. Go to [github.com/settings/tokens](https://github.com/settings/tokens)
+2. Create a token, tick nothing, and copy it
+3. In Terminal, run `export GITHUB_TOKEN=paste-it-here`
+
+A token with no permissions ticked is enough, because this tool only ever reads public information. If you already use the [GitHub CLI](https://cli.github.com), you can skip all of that:
 
 ```bash
 export GITHUB_TOKEN=$(gh auth token)
 ```
 
-Anything above roughly 25 repositories needs a token. Only public repositories are ever read: the endpoint this uses returns public repositories to any caller, a token raises the limit rather than widening what is visible, and anything marked private is discarded regardless.
+That line lasts until you close the Terminal window.
 
-File lists are cached under `~/Library/Caches/repo-omnibus/`, keyed on each repository's last push, so a second run costs nothing until someone pushes.
+**Only public repositories are ever read.** A token raises how often you may ask; it does not widen what is visible. Anything marked private is discarded even if it somehow appeared.
 
 ---
 
@@ -90,21 +149,21 @@ File lists are cached under `~/Library/Caches/repo-omnibus/`, keyed on each repo
 
 Reading a public repository is not the same as being allowed to copy it, and this tool makes copies.
 
-**Public does not mean unlicensed.** A repository with no licence file is covered by ordinary copyright, which means no one may reproduce or redistribute it. A repository with a licence is covered by that licence, including any obligation to keep notices attached to copies. Publishing a repository grants other people the right to view and fork it on GitHub, which is narrower than a right to redistribute a copy of it somewhere else. See GitHub's own guidance on [licensing a repository](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/licensing-a-repository) and the [Terms of Service](https://docs.github.com/en/site-policy/github-terms/github-terms-of-service).
+**Public does not mean free to reuse.** A project with no license file is covered by ordinary copyright, which means nobody may copy or republish it. A project with a license is covered by that license, including any requirement to keep notices attached. Publishing code on GitHub lets other people view and fork it there, which is narrower than a right to redistribute a copy elsewhere. GitHub explains this in [licensing a repository](https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/licensing-a-repository) and in its [Terms of Service](https://docs.github.com/en/site-policy/github-terms/github-terms-of-service).
 
-**A bundle is not a licensed distribution.** Licence files are left out by default, because the same text repeated forty times is noise in a context window. That is the right default for reading and the wrong one for redistribution. `-include-licenses` keeps them if you need the notices attached.
+**The file this produces is not a licensed distribution.** License files are left out by default, because the same text repeated forty times is wasted space. That is the right choice for reading and the wrong one for republishing. `-include-licenses` keeps them if you need the notices attached.
 
-**What this means in practice.** Treat a bundle as a private working copy: keep it on your machine, or hand it to a model you are using yourself. Do not publish one, host one, or ship one inside a product. Before reusing any code you find in a bundle, go to the repository it came from and read its terms there.
+**In practice.** Treat the file as a private working copy. Keep it on your machine, or hand it to an AI assistant you are using yourself. Do not publish it, host it, or ship it inside a product. Before reusing any code you find in it, go to the project it came from and read the terms there.
 
-**Terms of use of this tool.** It is provided as is, without warranty of any kind. You are responsible for how you use it and for complying with copyright law, with GitHub's terms, and with the licence of every repository you collect. Nothing here is legal advice, and the author is not a lawyer. If you are unsure whether a use is permitted, ask someone who is.
+**Terms of use.** This tool is provided as is, without warranty of any kind. You are responsible for how you use it and for complying with copyright law, with GitHub's terms, and with the license of every project you collect. Nothing here is legal advice, and the author is not a lawyer. If you are unsure whether something is allowed, ask someone who is.
 
-Every bundle carries a short version of this notice at the top, so the file explains itself when it travels without the README.
+Every file this produces carries a short version of that notice at the top, so it explains itself if it ever travels without this page.
 
 ---
 
-## What the file looks like
+## What the finished file looks like
 
-The bundle opens with a contents table, then a table of everything that could not be carried as text, each entry linked to the file on GitHub. After that comes each repository: a metadata table, then every file in full, with README first.
+It opens with a table of contents, then a table of anything that could not be included, each entry linked to the file on GitHub. After that comes each project: a summary table, then every file in full, README first.
 
 ```markdown
 ## Contents
@@ -127,13 +186,13 @@ The bundle opens with a contents table, then a table of everything that could no
 ## [`scripts/postgres-xray.sql`](https://github.com/hihipy/sql-x-ray/blob/main/scripts/postgres-xray.sql)
 ```
 
-Spreadsheets and Word documents are read rather than skipped. An `.xlsx` becomes a Markdown table per sheet, and a cell holding a formula shows the formula, so a repository whose whole product is a spreadsheet is represented by more than its README.
+Excel and Word files are read rather than skipped. A spreadsheet becomes a table per sheet, and a cell holding a formula shows the formula, so a project whose whole product is a spreadsheet is represented by more than its description.
 
 ---
 
-## What gets left out
+## What gets left out, and why
 
-The run ends with a summary of what it collected and what it dropped:
+Each run ends with a report of what it collected and what it dropped:
 
 ```
 43 repositories, 4,532 files, 18,187,340 characters, roughly 4,546,835 tokens
@@ -154,46 +213,60 @@ Not included: 886 files, 29.5 MB
     56  a serialized blob                                 12.8 MB
 ```
 
-A file is dropped when it is binary, over the size limit, a license, a dependency lock file, marked generated by the tool that wrote it, or sitting in a vendored or built directory. Beyond that, files are judged by shape rather than by name, because every account brings a format no list anticipated:
+That "tokens" figure is roughly how much of an AI assistant's reading capacity the file would use, which is the number that decides whether it will fit.
 
-| Signal | Threshold | What it catches |
+Files are dropped when they are images or other non-text, too large, a license, a dependency list, marked by the tool that generated them, or sitting in a folder holding copied-in or built code. Everything else is judged by what it looks like inside, rather than by its name, because every account brings some format nobody thought to list:
+
+| What it notices | Where the line sits | What that catches |
 |---|---|---|
-| One very long line | over 5,000 characters | Minified bundles, source maps, rendered SVG |
-| High mean line length | over 300 characters | Serialized output |
-| Few unique lines | under 35%, above 32 KB | CAD geometry, model catalogs, generated schemas |
-| Few letters | under 25%, above 32 KB | Coordinate and hash dumps |
+| One enormous line | over 5,000 characters | Compressed web files, drawings saved as text |
+| Long lines throughout | averaging over 300 characters | Machine-written output |
+| The same line over and over | under 35% different, files above 32 KB | Circuit board layouts, data tables |
+| Almost no letters | under 25% letters, files above 32 KB | Coordinates and checksums |
 
-For comparison, authored Go measures 70% letters with 80% of its lines unique. A KiCad schematic measures 38% and 14%.
+For comparison, code a person wrote is about 70% letters with 80% of its lines different from each other. A circuit board file is 38% and 14%.
 
-Every exclusion is counted in the summary and listed with a reason in the file, so nothing disappears quietly. `-include-generated` and `-include-licenses` bring them back.
+Nothing disappears quietly: every excluded file is counted in the report and listed with its reason in the file itself. `-include-generated` and `-include-licenses` bring them back.
 
 ---
 
-## Options
+## All the options
 
-| Flag | What it does |
+| Option | What it does |
 |---|---|
-| `-out PATH` | Where to write; defaults to `./<user>-omnibus.md` |
-| `-pick` | Choose repositories before collecting |
-| `-dry-run` | Report cost and size, write nothing |
-| `-exclude NAME` | Leave a repository out; repeatable |
-| `-include-forks` | Include forks |
-| `-include-archived` | Include archived repositories |
-| `-include-licenses` | Keep LICENSE files |
-| `-include-generated` | Keep lock files, vendored code, and machine-written files |
+| `-out PATH` | Where to save; defaults to `./<user>-omnibus.md` |
+| `-pick` | Choose projects before collecting |
+| `-dry-run` | Report what a run would involve, write nothing |
+| `-exclude NAME` | Leave a project out; use it more than once for several |
+| `-include-forks` | Include copies of other people's projects |
+| `-include-archived` | Include projects marked as no longer maintained |
+| `-include-licenses` | Keep license files |
+| `-include-generated` | Keep dependency lists, copied-in code, and machine-written files |
 | `-skip-office` | Link spreadsheets and documents rather than reading them |
-| `-max-repo-kb N` | Skip repositories larger than this; `0` for no limit, default 51200 |
-| `-max-file-bytes N` | Skip files larger than this, default 524288 |
-| `-no-file-types` | Skip the per-repository file-type counts |
+| `-max-repo-kb N` | Skip projects bigger than this; `0` for no limit, default 51200 |
+| `-max-file-bytes N` | Skip files bigger than this, default 524288 |
+| `-no-file-types` | Skip the per-project file-type counts |
 | `-plain` | Type a selection instead of using arrow keys |
-| `-verbose` | Name every skipped repository instead of counting them |
-| `-ignore-budget` | Start even when the quota looks too small |
+| `-verbose` | Name every skipped project instead of counting them |
+| `-ignore-budget` | Start even when GitHub's limit looks too small |
 
-`repo-omnibus -help` prints all of this in the terminal.
+Running `./repo-omnibus -help` prints all of this in the terminal, with examples.
 
 ---
 
-## Project structure
+## Things it cannot do
+
+**PDFs are linked, not read.** Their text is stored in a way that needs a dedicated library to decode, and a wrong answer would be worse than an honest link.
+
+**Very small machine-written files slip through.** The checks need enough text to measure, so a tiny generated file gets in. It costs a few hundred characters.
+
+**One project is held in memory at a time.** Very large projects are skipped rather than streamed, which is what the size limit is for. Some accounts have repositories of several gigabytes, and without the limit one of them would bring a laptop to a halt.
+
+---
+
+## For developers
+
+Written in Go with no dependencies outside the standard library.
 
 ```
 repo-omnibus/
@@ -202,7 +275,7 @@ repo-omnibus/
 └── internal/omnibus/
     ├── github.go          API client, rate-limit budget, file-type histogram
     ├── cache.go           remembers file lists between runs
-    ├── bundle.go          reads a repository tarball, decides what to keep
+    ├── bundle.go          reads a repository archive, decides what to keep
     ├── triage.go          judges a file by its shape rather than its name
     ├── office.go          reads xlsx and docx without a dependency
     ├── markdown.go        renders the document
@@ -212,17 +285,11 @@ repo-omnibus/
     └── run.go             flags and orchestration
 ```
 
-No dependencies outside the standard library. `go test ./...` runs the suite.
+```bash
+go test ./...
+```
 
----
-
-## Limitations
-
-**PDFs are linked, not read.** Their text lives in compressed streams with font-level encodings, and a wrong answer is worse than an honest link.
-
-**Very small generated files pass.** The shape rules need something to measure, so a thirty-byte stub gets through. It costs a few hundred bytes.
-
-**One repository is held in memory at a time.** Repositories above the size limit are skipped rather than streamed, which is why the limit exists.
+Each repository is fetched as a single archive rather than file by file, which is what keeps a whole account inside GitHub's hourly limit. File lists are cached under `~/Library/Caches/repo-omnibus/`, keyed on each project's last push, so a repeat run costs nothing until someone pushes.
 
 ---
 
