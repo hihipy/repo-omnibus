@@ -423,30 +423,24 @@ func TestDefaultOutNamesEveryAccount(t *testing.T) {
 	}
 }
 
-func TestSeveralAccountsCollectIntoOneFile(t *testing.T) {
-	t.Setenv("HOME", t.TempDir())
-	t.Setenv("XDG_CACHE_HOME", t.TempDir())
-
-	// Both accounts hold a repository called "docs", which is exactly the case
-	// that would collide if headings carried the bare name.
+func twoAccountServer(t *testing.T) *httptest.Server {
+	t.Helper()
 	byUser := map[string][]Repo{
 		"alice": {{Name: "docs", FullName: "alice/docs", HTMLURL: "https://github.com/alice/docs",
 			Size: 10, DefaultBranch: "main", Description: "Alice's notes"}},
 		"bob": {{Name: "docs", FullName: "bob/docs", HTMLURL: "https://github.com/bob/docs",
 			Size: 10, DefaultBranch: "main", Description: "Bob's notes"}},
 	}
-
-	remaining := 60
 	mux := http.NewServeMux()
 	limits := func(w http.ResponseWriter) {
 		w.Header().Set("X-RateLimit-Limit", "60")
-		w.Header().Set("X-RateLimit-Remaining", fmt.Sprintf("%d", remaining))
+		w.Header().Set("X-RateLimit-Remaining", "60")
 		w.Header().Set("X-RateLimit-Reset", fmt.Sprintf("%d", time.Now().Add(time.Hour).Unix()))
 	}
 	mux.HandleFunc("/rate_limit", func(w http.ResponseWriter, r *http.Request) {
 		limits(w)
 		json.NewEncoder(w).Encode(map[string]any{"rate": map[string]any{
-			"limit": 60, "remaining": remaining, "reset": time.Now().Add(time.Hour).Unix()}})
+			"limit": 60, "remaining": 60, "reset": time.Now().Add(time.Hour).Unix()}})
 	})
 	mux.HandleFunc("/users/", func(w http.ResponseWriter, r *http.Request) {
 		limits(w)
@@ -463,24 +457,75 @@ func TestSeveralAccountsCollectIntoOneFile(t *testing.T) {
 		w.Write(makeTarball(t, "w", map[string][]byte{"README.md": []byte("# notes\n")}))
 	})
 	srv := httptest.NewServer(mux)
-	defer srv.Close()
+	t.Cleanup(srv.Close)
+	return srv
+}
 
-	out := filepath.Join(t.TempDir(), "both.md")
-	if err := Run([]string{"-api", srv.URL, "-out", out, "alice", "bob"}, &strings.Builder{}); err != nil {
+func TestSeveralAccountsWriteOneFileEach(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	srv := twoAccountServer(t)
+	dir := t.TempDir()
+
+	if err := Run([]string{"-api", srv.URL, "-out", dir, "alice", "bob"}, &strings.Builder{}); err != nil {
 		t.Fatalf("run: %v", err)
 	}
 
-	doc, err := os.ReadFile(out)
+	for _, name := range []string{"alice-omnibus.md", "bob-omnibus.md"} {
+		body, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		// A file about one account names its repositories plainly.
+		if !strings.Contains(string(body), "\n# docs\n") {
+			t.Errorf("%s should use the bare repository name", name)
+		}
+	}
+
+	alice, _ := os.ReadFile(filepath.Join(dir, "alice-omnibus.md"))
+	if strings.Contains(string(alice), "Bob's notes") {
+		t.Error("alice's file should not carry bob's work")
+	}
+}
+
+func TestMergeWritesOneFile(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+	srv := twoAccountServer(t)
+	out := filepath.Join(t.TempDir(), "both.md")
+
+	if err := Run([]string{"-api", srv.URL, "-merge", "-out", out, "alice", "bob"},
+		&strings.Builder{}); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+
+	body, err := os.ReadFile(out)
 	if err != nil {
 		t.Fatal(err)
 	}
-	text := string(doc)
 	for _, want := range []string{"# alice/docs", "# bob/docs", "owned by each of"} {
-		if !strings.Contains(text, want) {
-			t.Errorf("document missing %q", want)
+		if !strings.Contains(string(body), want) {
+			t.Errorf("merged file missing %q", want)
 		}
 	}
-	if strings.Contains(text, "\n# docs\n") {
-		t.Error("bare names would collide across accounts")
+}
+
+func TestOutFolderVersusOutFile(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	dir := t.TempDir()
+
+	// An existing folder means "put it in here".
+	if got := outPath(options{out: dir}, []string{"alice"}); got != filepath.Join(dir, "alice-omnibus.md") {
+		t.Errorf("outPath with a folder = %q", got)
+	}
+	// Anything else is the filename itself.
+	file := filepath.Join(dir, "named.md")
+	if got := outPath(options{out: file}, []string{"alice"}); got != file {
+		t.Errorf("outPath with a file = %q", got)
+	}
+	// A trailing separator means a folder, even one that does not exist yet.
+	pending := filepath.Join(dir, "new") + string(filepath.Separator)
+	if got := outPath(options{out: pending}, []string{"alice"}); got != filepath.Join(pending, "alice-omnibus.md") {
+		t.Errorf("outPath with a trailing separator = %q", got)
 	}
 }

@@ -34,6 +34,7 @@ type options struct {
 	maxRepoKB       int
 	verbose         bool
 	dryRun          bool
+	merge           bool
 	ignoreBudget    bool
 	pick            bool
 	plain           bool
@@ -63,6 +64,8 @@ func Run(args []string, out io.Writer) error {
 	fs.BoolVar(&opt.verbose, "verbose", false,
 		"name every skipped repository instead of counting them")
 	fs.BoolVar(&opt.dryRun, "dry-run", false, "report cost and size, then write nothing")
+	fs.BoolVar(&opt.merge, "merge", false,
+		"with several accounts, write one combined file instead of one per account")
 	fs.BoolVar(&opt.pick, "pick", false,
 		"list the repositories and ask which ones to collect")
 	fs.BoolVar(&opt.noFileTypes, "no-file-types", false,
@@ -92,9 +95,6 @@ func Run(args []string, out io.Writer) error {
 		return errors.New("name at least one GitHub account")
 	}
 	opt.users = fs.Args()
-	if opt.out == "" {
-		opt.out = defaultOut(opt.users)
-	}
 
 	client := NewClient(opt.apiURL)
 
@@ -226,17 +226,94 @@ func Run(args []string, out io.Writer) error {
 
 	fmt.Fprint(out, TerminalSummary(bundles, 8))
 
-	doc := Render(opt.users, bundles, time.Now())
-	if dir := filepath.Dir(opt.out); dir != "." {
+	return write(bundles, opt, out)
+}
+
+// write saves the bundles. Several accounts get a file each, because two
+// people's work read together is rarely one document; -merge asks for the
+// combined file instead.
+func write(bundles []Bundle, opt options, out io.Writer) error {
+	groups := groupByOwner(bundles, opt.users)
+	if opt.merge || len(groups) == 1 {
+		return writeOne(opt.users, bundles, outPath(opt, opt.users), out)
+	}
+	for _, g := range groups {
+		if err := writeOne([]string{g.owner}, g.bundles,
+			outPath(opt, []string{g.owner}), out); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+type ownerGroup struct {
+	owner   string
+	bundles []Bundle
+}
+
+// groupByOwner keeps the accounts in the order they were named on the command
+// line, which is the order the person asking has in mind.
+func groupByOwner(bundles []Bundle, users []string) []ownerGroup {
+	byOwner := map[string][]Bundle{}
+	for _, b := range bundles {
+		byOwner[ownerOf(b.Repo)] = append(byOwner[ownerOf(b.Repo)], b)
+	}
+
+	var out []ownerGroup
+	seen := map[string]bool{}
+	for _, u := range users {
+		for owner, group := range byOwner {
+			if strings.EqualFold(owner, u) && !seen[owner] {
+				out = append(out, ownerGroup{owner, group})
+				seen[owner] = true
+			}
+		}
+	}
+	// Anything the loop missed, in case an account was renamed under us.
+	for owner, group := range byOwner {
+		if !seen[owner] {
+			out = append(out, ownerGroup{owner, group})
+			seen[owner] = true
+		}
+	}
+	return out
+}
+
+func ownerOf(r Repo) string {
+	if i := strings.Index(r.FullName, "/"); i > 0 {
+		return r.FullName[:i]
+	}
+	return r.FullName
+}
+
+// outPath decides where one document goes. Without -out that is the Downloads
+// folder; with -out it is the file named, or a file inside the folder named.
+func outPath(opt options, users []string) string {
+	name := filepath.Base(defaultOut(users))
+	if opt.out == "" {
+		return defaultOut(users)
+	}
+	if info, err := os.Stat(opt.out); err == nil && info.IsDir() {
+		return filepath.Join(opt.out, name)
+	}
+	if strings.HasSuffix(opt.out, string(filepath.Separator)) {
+		return filepath.Join(opt.out, name)
+	}
+	return opt.out
+}
+
+func writeOne(users []string, bundles []Bundle, path string, out io.Writer) error {
+	doc := Render(users, bundles, time.Now())
+	if dir := filepath.Dir(path); dir != "." {
 		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("creating %s: %w", dir, err)
 		}
 	}
-	if err := os.WriteFile(opt.out, []byte(doc), 0o644); err != nil {
-		return fmt.Errorf("writing %s: %w", opt.out, err)
+	if err := os.WriteFile(path, []byte(doc), 0o644); err != nil {
+		return fmt.Errorf("writing %s: %w", path, err)
 	}
 	fmt.Fprintf(out, "\nwrote %s (%s bytes, %d repositories)\n",
-		opt.out, commas(int64(len(doc))), len(bundles))
+		path, commas(int64(len(doc))), len(bundles))
 	return nil
 }
 
@@ -288,8 +365,11 @@ Examples:
         Leave named repositories out
 
   repo-omnibus hihipy charmbracelet
-        Collect several accounts into one file. Repository headings carry the
-        owner, since two accounts can hold the same name.
+        Collect two accounts, writing one file each
+
+  repo-omnibus -merge hihipy charmbracelet
+        The same two accounts in one combined file, with the owner on every
+        repository heading since two accounts can hold the same name
 
 Rate limits:
   GitHub allows 60 requests an hour without a token and 5,000 with one. A run
@@ -322,7 +402,9 @@ Flags:
 	fmt.Fprint(out, `
 Files:
   ~/Downloads/<user>-omnibus.md
-                               the bundle, unless -out says otherwise
+                               one file per account, unless -out says
+                               otherwise. -out FILE names the file, -out DIR
+                               names the folder
   ~/Library/Caches/repo-omnibus/trees.json
                                remembers each repository's file list, so a
                                rerun costs nothing until someone pushes

@@ -99,13 +99,25 @@ It works on organizations as well as people:
 ./repo-omnibus charmbracelet
 ```
 
-You can also name several accounts, and they land in one file together. That is the case for a personal account plus a work organization, or for comparing two people's work side by side:
+You can also name several accounts at once. Each gets its own file, which is usually what you want, since two people's work rarely belongs in one document:
 
 ```bash
 ./repo-omnibus hihipy charmbracelet
 ```
 
-When more than one account is involved, each project heading carries the owner, since two accounts can hold a project with the same name.
+That writes `hihipy-omnibus.md` and `charmbracelet-omnibus.md`. Add `-merge` if you do want them combined, for example to ask a question that spans a personal account and a work organization:
+
+```bash
+./repo-omnibus -merge hihipy my-company
+```
+
+In a merged file each project heading carries the owner, since two accounts can hold a project with the same name.
+
+`-out` accepts either a filename or a folder. A folder is the useful form when you are collecting several accounts:
+
+```bash
+./repo-omnibus -out ~/Desktop/bundles/ hihipy charmbracelet
+```
 
 ---
 
@@ -242,7 +254,8 @@ Nothing disappears quietly: every excluded file is counted in the report and lis
 
 | Option | What it does |
 |---|---|
-| `-out PATH` | Where to save; defaults to `~/Downloads/<user>-omnibus.md` |
+| `-out PATH` | A filename, or a folder to put the files in; defaults to `~/Downloads` |
+| `-merge` | With several accounts, write one combined file instead of one each |
 | `-pick` | Choose projects before collecting |
 | `-dry-run` | Report what a run would involve, write nothing |
 | `-exclude NAME` | Leave a project out; use it more than once for several |
