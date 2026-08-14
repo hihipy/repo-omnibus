@@ -361,3 +361,44 @@ func TestHelpExitsCleanly(t *testing.T) {
 		t.Error("asking for help should not report an error")
 	}
 }
+
+func TestDefaultOutIsTheDownloadsFolder(t *testing.T) {
+	// A file you are about to read or drag somewhere belongs in Downloads, not
+	// in whichever directory the terminal happened to be sitting in.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	if err := os.MkdirAll(filepath.Join(home, "Downloads"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	got := defaultOut("hihipy")
+	want := filepath.Join(home, "Downloads", "hihipy-omnibus.md")
+	if got != want {
+		t.Errorf("defaultOut = %q, want %q", got, want)
+	}
+}
+
+func TestDefaultOutFallsBackWithoutDownloads(t *testing.T) {
+	// Not every machine has a Downloads folder, and a missing one should not
+	// stop a run.
+	t.Setenv("HOME", t.TempDir())
+	if got := defaultOut("hihipy"); got != "hihipy-omnibus.md" {
+		t.Errorf("defaultOut = %q, want the plain filename", got)
+	}
+}
+
+func TestOutFlagStillWins(t *testing.T) {
+	t.Setenv("HOME", t.TempDir())
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())
+
+	remaining := 60
+	srv := fakeGitHubWithTrees(t, testRepos(1), &remaining)
+	out := filepath.Join(t.TempDir(), "somewhere-else.md")
+
+	if err := Run([]string{"-api", srv.URL, "-out", out, "hihipy"}, &strings.Builder{}); err != nil {
+		t.Fatalf("run: %v", err)
+	}
+	if _, err := os.Stat(out); err != nil {
+		t.Errorf("-out was ignored: %v", err)
+	}
+}

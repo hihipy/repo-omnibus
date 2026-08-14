@@ -77,7 +77,7 @@ Point it at any GitHub username:
 ./repo-omnibus hihipy
 ```
 
-It prints what it is doing as it goes, then writes a file called `hihipy-omnibus.md` in the same folder. Open that file in any text editor, or in a Markdown reader like [Obsidian](https://obsidian.md) or [Typora](https://typora.io), or drag it into ChatGPT or Claude and start asking questions.
+It prints what it is doing as it goes, then writes a file called `hihipy-omnibus.md` into your **Downloads** folder. Open that file in any text editor, or in a Markdown reader like [Obsidian](https://obsidian.md) or [Typora](https://typora.io), or drag it into ChatGPT or Claude and start asking questions.
 
 To see what a run would involve before doing it:
 
@@ -87,10 +87,10 @@ To see what a run would involve before doing it:
 
 That reports how many repositories there are and roughly how big the result would be, and writes nothing.
 
-To save the file somewhere else:
+To save it somewhere else, name the file you want:
 
 ```bash
-./repo-omnibus -out ~/Downloads/my-work.md hihipy
+./repo-omnibus -out ~/Desktop/my-work.md hihipy
 ```
 
 It works on organizations as well as people:
@@ -234,7 +234,7 @@ Nothing disappears quietly: every excluded file is counted in the report and lis
 
 | Option | What it does |
 |---|---|
-| `-out PATH` | Where to save; defaults to `./<user>-omnibus.md` |
+| `-out PATH` | Where to save; defaults to `~/Downloads/<user>-omnibus.md` |
 | `-pick` | Choose projects before collecting |
 | `-dry-run` | Report what a run would involve, write nothing |
 | `-exclude NAME` | Leave a project out; use it more than once for several |

@@ -52,7 +52,8 @@ func Run(args []string, out io.Writer) error {
 	// The manual is output, not a diagnostic, so it goes where the rest of the
 	// run reports rather than to stderr.
 	fs.SetOutput(out)
-	fs.StringVar(&opt.out, "out", "", "output path (default ./<user>-omnibus.md)")
+	fs.StringVar(&opt.out, "out", "",
+		"output path (default ~/Downloads/<user>-omnibus.md)")
 	fs.Var(&opt.exclude, "exclude", "repository name to leave out; repeatable")
 	fs.BoolVar(&opt.includeForks, "include-forks", false, "include forks")
 	fs.BoolVar(&opt.includeArchived, "include-archived", false, "include archived repositories")
@@ -92,7 +93,7 @@ func Run(args []string, out io.Writer) error {
 	}
 	opt.user = fs.Arg(0)
 	if opt.out == "" {
-		opt.out = opt.user + "-omnibus.md"
+		opt.out = defaultOut(opt.user)
 	}
 
 	client := NewClient(opt.apiURL)
@@ -232,6 +233,24 @@ func Run(args []string, out io.Writer) error {
 	return nil
 }
 
+// defaultOut puts the bundle in the user's Downloads folder, which is where a
+// file you are about to open, read, or drag into something else belongs. The
+// working directory is where the tool happens to be run from, which is rarely
+// the same place. It falls back to the working directory when there is no home
+// directory or no Downloads folder in it.
+func defaultOut(user string) string {
+	name := user + "-omnibus.md"
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return name
+	}
+	downloads := filepath.Join(home, "Downloads")
+	if info, err := os.Stat(downloads); err != nil || !info.IsDir() {
+		return name
+	}
+	return filepath.Join(downloads, name)
+}
+
 // usage is the manual. A tool nobody can read is a tool nobody runs, and the
 // terminal is where a reader looks first.
 func usage(fs *flag.FlagSet) {
@@ -244,7 +263,7 @@ Usage:
 
 Examples:
   repo-omnibus hihipy
-        Collect everything, write ./hihipy-omnibus.md
+        Collect everything, write ~/Downloads/hihipy-omnibus.md
 
   repo-omnibus -pick hihipy
         Choose which repositories to collect, with arrow keys
@@ -252,8 +271,8 @@ Examples:
   repo-omnibus -dry-run torvalds
         Report what it would cost and how big it would be, write nothing
 
-  repo-omnibus -out ~/Downloads/charm.md charmbracelet
-        Works on organizations as well as people
+  repo-omnibus -out ~/Desktop/charm.md charmbracelet
+        Works on organizations, and -out chooses where the file lands
 
   repo-omnibus -exclude notes -exclude scratch hihipy
         Leave named repositories out
@@ -288,7 +307,8 @@ Flags:
 	fs.PrintDefaults()
 	fmt.Fprint(out, `
 Files:
-  ./<user>-omnibus.md          the bundle, unless -out says otherwise
+  ~/Downloads/<user>-omnibus.md
+                               the bundle, unless -out says otherwise
   ~/Library/Caches/repo-omnibus/trees.json
                                remembers each repository's file list, so a
                                rerun costs nothing until someone pushes
