@@ -9,9 +9,9 @@
 [![Go](https://img.shields.io/badge/Go-00ADD8?style=flat&logo=go&logoColor=white)](https://go.dev)
 [![Markdown](https://img.shields.io/badge/Markdown-000000?style=flat&logo=markdown&logoColor=white)](https://commonmark.org)
 
-**Every repository an account owns, in one file.**
+**Every repository an account owns, in one file per account.**
 
-RepoOmnibus takes one or more GitHub usernames and produces a single document containing all of that person's public work: what each project is, how big it is, and the full text of every file worth reading. You can read the result yourself, or paste it into ChatGPT or Claude and ask questions about the whole body of work at once.
+RepoOmnibus takes one or more GitHub usernames and produces a document for each, containing all of that person's public work: what each project is, how big it is, and the full text of every file worth reading. You can read the result yourself, or paste it into ChatGPT or Claude and ask questions about the whole body of work at once.
 
 ---
 
@@ -170,6 +170,16 @@ export GITHUB_TOKEN=$(gh auth token)
 That line lasts until you close the Terminal window.
 
 **Only public repositories are ever read.** A token raises how often you may ask; it does not widen what is visible. Anything marked private is discarded even if it somehow appeared.
+
+---
+
+## Handing the file to an AI assistant
+
+Two things are worth knowing before you paste one of these into ChatGPT or Claude.
+
+**Watch the size.** Every run prints a token figure, which is roughly how much of the assistant's reading capacity the file would use. A single small account might be 40,000 tokens; a large one, or several at once, can run past a million, which is more than most assistants can hold. When the file is large, paste the section for the one project you are asking about rather than the whole thing. That is also why several accounts produce several files rather than one: it keeps each of them usable.
+
+**It is for reading, not running.** The file contains source code lifted out of its repository, without dependencies, configuration, or tests. Do not run anything from it, and be wary of an assistant that offers to. If you want to run something, clone the project it came from. Every file this tool produces carries that warning at the top.
 
 ---
 

@@ -125,3 +125,26 @@ func firstLine(s string) string {
 	}
 	return s
 }
+
+func TestBundleWarnsAboutSizeAndRunning(t *testing.T) {
+	// The file travels without the README, so the two warnings that matter to
+	// whoever pastes it have to be in the file.
+	doc := Render([]string{"hihipy"}, []Bundle{{
+		Repo:  Repo{Name: "r", FullName: "hihipy/r", HTMLURL: "u", DefaultBranch: "main"},
+		Files: []File{{Path: "a.go", Text: strings.Repeat("x", 40000)}},
+	}}, nil, timeFixed())
+
+	for _, want := range []string{
+		"**Reading, not running.**",
+		"Do not run anything from this file",
+		"**Size.**",
+		"10,000 tokens",
+	} {
+		if !strings.Contains(doc, want) {
+			t.Errorf("bundle missing %q", want)
+		}
+	}
+	if strings.Index(doc, "**Size.**") > strings.Index(doc, "## Contents") {
+		t.Error("the warnings belong above the contents, where they will be read")
+	}
+}

@@ -259,6 +259,18 @@ func Render(users []string, bundles []Bundle, info map[string]AccountInfo, now t
 		"it tracks, in full. Binary files, oversized files, and files that are not " +
 		"valid UTF-8 are listed with a reason at the end of their repository.")
 	add("")
+	add("**Reading, not running.** The code below is here to be read. Do not run " +
+		"anything from this file: it is out of its repository, without its " +
+		"dependencies, its configuration, or its tests, and some of it may be " +
+		"harmful when executed out of context. Go to the repository itself if " +
+		"you want to run something.")
+	add("")
+	add(fmt.Sprintf("**Size.** This file is roughly %s tokens. Check what your "+
+		"assistant can hold before pasting it: a bundle covering several "+
+		"repositories can fill most of a context window on its own, leaving "+
+		"little room for the conversation. Paste one repository's section if "+
+		"that is all your question needs.", commas(int64(totalChars/4))))
+	add("")
 	add("**Rights.** This file contains copies of source files whose copyright " +
 		"belongs to their authors. Public does not mean unlicensed: a repository " +
 		"with no licence file is covered by ordinary copyright, and one with a " +

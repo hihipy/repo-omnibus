@@ -24,10 +24,20 @@ jobs:
     # The tool reads a real terminal and a real cache directory, so it is worth
     # knowing it builds and passes on the platforms people run it from.
     strategy:
+      # One broken combination should not cancel the jobs that would have told
+      # us something.
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest]
-        # 1.22 is the floor go.mod declares; stable is what people actually run.
+        # 1.22 is the floor go.mod declares; stable is what people run.
         go: ["1.22", "stable"]
+        exclude:
+          # Go 1.22's linker writes Mach-O binaries with no LC_UUID load
+          # command, and the current macOS runner's dyld refuses to load one
+          # under -race. The floor is still checked on Linux, and macOS is
+          # still checked on the toolchain people actually have.
+          - os: macos-latest
+            go: "1.22"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
