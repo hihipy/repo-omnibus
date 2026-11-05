@@ -19,6 +19,11 @@ on:
   # Allow manual runs from the Actions tab
   workflow_dispatch:
 
+# The jobs only check out, test, and build, so the token needs nothing
+# beyond reading the repository.
+permissions:
+  contents: read
+
 jobs:
   test:
     # The tool reads a real terminal and a real cache directory, so it is worth
